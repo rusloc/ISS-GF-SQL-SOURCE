@@ -4,7 +4,7 @@
 
 -- set var value (assign code)
 set dev.users_login = 
---$sql$
+$sql$
 
 
 select 
@@ -33,7 +33,6 @@ select
 	,trim(o."Customer Accounting ID")									_accounting_id_focus
 	,trim(o."Tax ID")													_tax_id_focus
 	,upper(trim(o."Account Manager Name"))								_account_manager_focus
-	,o
 	,coalesce(o.iss_domain,'NA')											_iss_dom
 	,coalesce(o."Account Manager Name",'NA')								_acc_manager
 	,n."name" 
