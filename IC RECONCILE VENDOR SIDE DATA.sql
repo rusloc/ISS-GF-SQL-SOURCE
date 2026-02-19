@@ -25,20 +25,20 @@ select
 from (
 			-- MANUAL INVOICES with tx type 'CUSTOMER'
 						select 
-							'MANUAL DOCS.'																								_src
+							'MANUAL DOCS.'																							_src
 							,c."Customer Account" 																					_client
-							,c."Company" 																								_vendor
+							,c."Company" 																							_vendor
 							,i._iss_dom																								_iss_domain
 							,coalesce(c."Invoice", c."Voucher")																		_invoice
-							,coalesce(c."Invoice", c."Voucher") || '_' || c."Company" || '-' || c."Customer Account"										_inv_id
+							,coalesce(c."Invoice", c."Voucher") || '_' || c."Company" || '-' || c."Customer Account"					_inv_id
 							,md5(coalesce(c."Invoice", c."Voucher") || '_' || c."Company" || '-' || c."Customer Account")
 							,case 
 								when c."Invoice" ilike '%-CN-%'
 									then 'CR. NOTE'
 								else 'INVOICE'
 							end																											_doc_type
-							,coalesce(c."Voucher Date"::date, c."Posted Date"::date)												_post_date
-							,c."Voucher" 																								_voucher
+							,coalesce(c."Voucher Date"::date, c."Posted Date"::date)													_post_date
+							,c."Voucher" 																							_voucher
 							,c."Voucher Date"::date																					_voucher_date
 							,c."Amount in Transaction Currency" 																		_amount
 							,c."Currency" 																							_currency
@@ -65,16 +65,16 @@ union all
 							,c."Customer Account" 																					_client
 							,c."Company" 																								_vendor
 							,i._iss_dom																									_iss_domain
-							,coalesce(c."Invoice", c."Voucher") 																								_invoice
-							,coalesce(c."Invoice", c."Voucher") || '_' || c."Company" || '-' || c."Customer Account"										_inv_id
+							,coalesce(c."Invoice", c."Voucher") 																			_invoice
+							,coalesce(c."Invoice", c."Voucher") || '_' || c."Company" || '-' || c."Customer Account"						_inv_id
 							,md5(coalesce(c."Invoice", c."Voucher") || '_' || c."Company" || '-' || c."Customer Account")
 							,case 
 								when c."Invoice" ilike '%-CN-%'
 									then 'CR. NOTE'
 								else 'INVOICE'
 							end																											_doc_type
-							,coalesce(c."Voucher Date"::date, c."Posted Date"::date)												_post_date
-							,c."Voucher" 																								_voucher
+							,coalesce(c."Voucher Date"::date, c."Posted Date"::date)													_post_date
+							,c."Voucher" 																							_voucher
 							,c."Voucher Date"::date																					_voucher_date
 							,c."Amount in Transaction Currency" 																		_amount
 							,c."Currency" 																							_currency
@@ -104,8 +104,8 @@ left join (
 										,case 
 											when fa."ID" is not null then 'https://' || fa.iss_domain || '.logistaas.com/attachments/' || fa."ID"
 											else null
-										end 																									_url
-										,'http://iss-track-trace.uaenorth.azurecontainer.io:50052/invoice/' || 'inv' || i."ID"				_url_vault
+										end 																										_url
+										,'http://iss-track-trace.uaenorth.azurecontainer.io:50052/invoice/' || 'inv' || i."ID"						_url_vault
 									from public.focus__issued_invoices i
 									left join (
 													select 
@@ -114,8 +114,8 @@ left join (
 													where 1=1
 														and "Parent Type" = 'IssuedInvoice' 
 														and "Shared With Customer" = true
-											) fa ON
-										fa."Parent ID" = i."ID"
+											) fa
+										on fa."Parent ID" = i."ID"
 									where 1=1
 										and i."Serial No" is not null
 									--	and i."Serial No" = 'INVDXBSE25004931'
@@ -125,7 +125,7 @@ left join (
 -- join CR NOTES links
 left join (
 									select
-										i."Serial No"																							_invoice
+										i."Serial No"																								_invoice
 										,i."ID" 
 										,i.iss_domain																							
 										,i."Total" 
@@ -271,6 +271,12 @@ where 1=1
 
 $sql$
 
+
+
+
+
+
+-- update sourcce code
 update public.sql_source
 set _code = current_setting('dev.vendor_side_data')
 	,_updated = now()

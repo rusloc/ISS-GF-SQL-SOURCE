@@ -189,17 +189,44 @@ from (
 						(feic._ship_response ->> 'etd_wakeo_date'::text)::date
 						,(feic._ship_response ->> 'ptd_date'::text)::date
 						,(feic._ship_response ->> 'etd_date'::text)::date)															_full_etd
-		-- EDD First - First Estimated Delivery Date
+/*
+		EDD dates:
+				1. PO line level
+					> _first_edd_po
+					> _current_edd_fo
+				2. FO level
+					> _first_edd_fo
+					> _current_edd_fo
+*/
+-- PO LEVEL EDD DATES
 					,min(coalesce(
 						(feic._ship_response ->> 'pta_date'::text)::date
 						,(feic._ship_response ->> 'eta_date'::text)::date	))
-						over(partition by pol.po_no) + interval '3 days'																_first_edd
-		-- EDD Current - Current Estimated Delivery Date
+						over(partition by pol.po_no) + interval '3 days'																_first_edd_po
 					,max(coalesce(
-						(feic._ship_response ->> 'arrival_date'::text)::date	
+			-- ATA must be less then today
+						(case 
+							when (feic._ship_response ->> 'arrival_date'::text)::date	 < now()::date
+								then (feic._ship_response ->> 'arrival_date'::text)::date
+							else null end)
 						,(feic._ship_response ->> 'eta_wakeo_date'::text)::date
 						,(feic._ship_response ->> 'etd_date'::text)::date	))
-						over(partition by pol.po_no) + interval '3 days'																_current_edd
+						over(partition by pol.po_no) + interval '3 days'																_current_edd_po
+-- FO LEVEL EDD DATES
+					,min(coalesce(
+						(feic._ship_response ->> 'pta_date'::text)::date
+						,(feic._ship_response ->> 'eta_date'::text)::date	))
+						over(partition by fu.id) + interval '3 days'																	_first_edd_fo
+					,max(coalesce(
+			-- ATA must be less then today
+						(case 
+							when (feic._ship_response ->> 'arrival_date'::text)::date	 < now()::date
+								then (feic._ship_response ->> 'arrival_date'::text)::date
+							else null end)
+						,(feic._ship_response ->> 'eta_wakeo_date'::text)::date
+						,(feic._ship_response ->> 'etd_date'::text)::date	))
+						over(partition by fu.id) + interval '3 days'																	_current_edd_fo
+-- other dates
 					,(select el ->> 'value'
 				      from jsonb_array_elements(feic._ship_response::jsonb -> 'custom_dates') el
 				      where el ->> 'name' = 'POD Date')::date																			_pod_date
@@ -1151,12 +1178,14 @@ from (
 								,null::date 																						_revised_eta
 								,null::date 																						_eta_wakeo
 								,null::date 																						_full_eta
-								,null::date 																						_first_etd
-								,null::date 																						_current_edd
+								,null::date 																						_etd
 								,null::date 																						_revised_etd
 								,null::date 																						_etd_wakeo
 								,null::date 																						_full_etd
-								,null::date 																						_edd
+								,null::date 																						_first_etd_po
+								,null::date 																						_current_edd_po
+								,null::date 																						_first_etd_fo
+								,null::date 																						_current_edd_fo
 								,null::date 																						_pod_date
 								,null::date 																						_do_date
 								,null::date																						_do_exp
