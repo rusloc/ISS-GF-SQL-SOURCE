@@ -13,9 +13,37 @@
 
 -- set var: edit inline SQL source and run
 set dev.po_view = 
-$sql$ 
+--$sql$ 
 
-select *
+select 
+	m.*
+	,case 
+		when _line_type = 'Enriched'	and _fo_serial is null 
+			then 'red'
+		when _line_type = 'Enriched'	and _fo_serial is not null and _original_po_qty > _shipped
+			then 'yellow'
+		when _line_type = 'Enriched'	and _fo_serial is not null and _original_po_qty = _shipped
+			then 'blank'
+		when _line_type = 'Pending' and (count(_fo_id) over(partition by _po_no_ekporef)) > 0
+			then 'green'
+		else null
+	end																																_po_acknowledgement_expt
+	,case 
+		when _current_edd_po > _po_need_by_date and _line_type = 'Enriched'
+			then 'red'
+		else null end 																												_po_line_item_delivery_expt
+	,case 
+		when _line_type = 'Enriched'
+			and coalesce(_departure_date, _etd_wakeo, _ptd, _etd) > (coalesce(_crd,_est_cargo_ready_date) + interval '7 days')
+			and coalesce(_departure_date,_etd_wakeo,_ptd,_etd) > now()::date
+				then 'red'
+		else null
+	end																																_container_booking_perf_expt
+	,case 
+		when _arrival_date is not null and _del is null and now()::date > (_arrival_date + interval '3 days')
+			then 'red'
+		else null
+	end																																_clearance_delivery_expt	
 from (
 	-- ####### shipped qnty ########
 	with _pre_calc as(
@@ -31,7 +59,8 @@ from (
 					,pol.purchase_order_company_id																					_client_id
 					,poc.company_name																								_client_name
 			-- removed pol.po_qty_ordered::numeric -> 0 (only for enriched)
-					,null::numeric																									_ordered
+					,pol.po_qty_ordered::numeric																						_original_po_qty
+					,null::numeric																									_po_outer_qty
 					,pofu.quantity 																									_shipped
 					,pofu.quantity																									_qnty_shipped_remaning
 					,case 
@@ -189,6 +218,7 @@ from (
 						(feic._ship_response ->> 'etd_wakeo_date'::text)::date
 						,(feic._ship_response ->> 'ptd_date'::text)::date
 						,(feic._ship_response ->> 'etd_date'::text)::date)															_full_etd
+					,(feic._ship_response ->> 'ptd_date'::text)::date																	_ptd
 /*
 		EDD dates:
 				1. PO line level
@@ -1072,7 +1102,8 @@ from (
 								,_line_id																						_line_no
 								,pol.purchase_order_company_id																	_client_id
 								,poc.company_name																				_client_name
-								,pol.po_qty_ordered::numeric																		_ordered
+								,pol.po_qty_ordered::numeric																		_original_po_qty
+								,pol.po_qty_ordered::numeric																		_po_outer_qty
 								,null::numeric 																					_shipped
 								,null::numeric 																					_qnty_shipped_remaning
 								,null::numeric 																					_inner_qnty_shipped
@@ -1182,6 +1213,7 @@ from (
 								,null::date 																						_revised_etd
 								,null::date 																						_etd_wakeo
 								,null::date 																						_full_etd
+								,null::date 																						_ptd_date
 								,null::date 																						_first_etd_po
 								,null::date 																						_current_edd_po
 								,null::date 																						_first_etd_fo
