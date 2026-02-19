@@ -13,7 +13,7 @@
 
 -- set var: edit inline SQL source and run
 set dev.po_view = 
---$sql$ 
+$sql$ 
 
 select *
 from (
@@ -39,6 +39,7 @@ from (
 						when pol.po_uom = 'CASE OF 6' then 6 * pofu.quantity
 						when pol.po_uom = 'CASE OF 12' then 12 * pofu.quantity
 						when pol.po_uom = 'CASE OF 24' then 24 * pofu.quantity
+						when pol.po_uom = 'CASE OF 32' then 32 * pofu.quantity
 						else 0 end																									_inner_qnty_shipped
 					,null::numeric 																									_balance_outer_qnty
 					,null::numeric 																									_balance_inner_qnty
