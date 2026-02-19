@@ -6,7 +6,7 @@
  * 		* remainig PO lines show only remaning qnty (ordered qnty - shipped qnty)
  * 		* when shipped qnty fully covers total ordered qnty in the PO line then PO line remainig qnty (line in the table) is omitted (is not shown)
  * 		* basically meaning: qnty from the PO line slowly flows into Shipped part of the script and when reaches zero is not shown any more
- * 
+ * 		* added EDD dates for Exception alerts functionality
  */
 
 
