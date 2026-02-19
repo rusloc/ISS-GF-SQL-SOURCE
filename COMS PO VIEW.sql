@@ -13,24 +13,12 @@
 
 -- set var: edit inline SQL source and run
 set dev.po_view = 
-$sql$ 
+--$sql$ 
 
 select *
 from (
 	-- ####### shipped qnty ########
-	with _uom as (
-				select 
-				    column1 								_uom
-				    ,column2 							_qnty
-				from (
-				    values 
-				        ('EACH', 1) 
-				        ,('CASE OF 6', 6)
-				        ,('CASE OF 9', 9)
-						,('CASE OF 9', 12)
-						,('CASE OF 9', 24)
-				))
-	,_pre_calc as(
+	with _pre_calc as(
 				select  
 					'Enriched'																										_line_type
 			-- line id is used in report for synthetic PO line -> to keep all lines visible in report; used row_number() so all lines are different (DO NOT use _line_id from subquery)
@@ -200,6 +188,17 @@ from (
 						(feic._ship_response ->> 'etd_wakeo_date'::text)::date
 						,(feic._ship_response ->> 'ptd_date'::text)::date
 						,(feic._ship_response ->> 'etd_date'::text)::date)															_full_etd
+		-- EDD First - First Estimated Delivery Date
+					,min(coalesce(
+						(feic._ship_response ->> 'pta_date'::text)::date
+						,(feic._ship_response ->> 'eta_date'::text)::date	))
+						over(partition by pol.po_no) + interval '3 days'																_first_edd
+		-- EDD Current - Current Estimated Delivery Date
+					,max(coalesce(
+						(feic._ship_response ->> 'arrival_date'::text)::date	
+						,(feic._ship_response ->> 'eta_wakeo_date'::text)::date
+						,(feic._ship_response ->> 'etd_date'::text)::date	))
+						over(partition by pol.po_no) + interval '3 days'																_current_edd
 					,(select el ->> 'value'
 				      from jsonb_array_elements(feic._ship_response::jsonb -> 'custom_dates') el
 				      where el ->> 'name' = 'POD Date')::date																			_pod_date
@@ -1151,10 +1150,12 @@ from (
 								,null::date 																						_revised_eta
 								,null::date 																						_eta_wakeo
 								,null::date 																						_full_eta
-								,null::date 																						_etd
+								,null::date 																						_first_etd
+								,null::date 																						_current_edd
 								,null::date 																						_revised_etd
 								,null::date 																						_etd_wakeo
 								,null::date 																						_full_etd
+								,null::date 																						_edd
 								,null::date 																						_pod_date
 								,null::date 																						_do_date
 								,null::date																						_do_exp

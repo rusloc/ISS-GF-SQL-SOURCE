@@ -1,5 +1,7 @@
 
 
+
+
 -- save script into VAR
 set dev.sales_gp_rls = 
 $sql$
