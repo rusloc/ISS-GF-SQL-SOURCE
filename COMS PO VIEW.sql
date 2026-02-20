@@ -13,10 +13,15 @@
 
 -- set var: edit inline SQL source and run
 set dev.po_view = 
---$sql$ 
+$sql$ 
+
+
 
 select 
 	m.*
+/*
+	Exceptions logic
+*/
 	,case 
 		when _line_type = 'Enriched'	and _fo_serial is null 
 			then 'red'
@@ -29,7 +34,8 @@ select
 		else null
 	end																																_po_acknowledgement_expt
 	,case 
-		when _current_edd_po > _po_need_by_date and _line_type = 'Enriched'
+		when (_current_edd_fo > _po_need_by_date and _line_type = 'Enriched')
+			or (_line_type = 'Pending' and now() >= _po_need_by_date)
 			then 'red'
 		else null end 																												_po_line_item_delivery_expt
 	,case 
@@ -44,6 +50,21 @@ select
 			then 'red'
 		else null
 	end																																_clearance_delivery_expt	
+	,case 
+		when _line_type = 'Enriched'
+			and coalesce(_departure_date_actual,_etd_wakeo, _ptd) > _etd and (_del is null or _del > now()::date)
+			then 'red'
+		when _line_type = 'Enriched'
+			and _etd is not null and _departure_date_actual is not null 
+			and _etd >= now()::date and (_del is null or _del > now()::date)
+			then 'red'
+		when _line_type = 'Enriched'
+			and coalesce(_arrival_date, _eta_wakeo, _pta) > _eta and (_del is null or _del > now()::date)
+			then 'red'
+		when _eta is not null and _arrival_date is null and _eta >= now()::date and (_del is null or _del > now()::date)
+			then 'red'
+		else null
+	end																																_transit_delay_expt	
 from (
 	-- ####### shipped qnty ########
 	with _pre_calc as(
@@ -218,6 +239,7 @@ from (
 						(feic._ship_response ->> 'etd_wakeo_date'::text)::date
 						,(feic._ship_response ->> 'ptd_date'::text)::date
 						,(feic._ship_response ->> 'etd_date'::text)::date)															_full_etd
+					,(feic._ship_response ->> 'pta_date'::text)::date																	_pta
 					,(feic._ship_response ->> 'ptd_date'::text)::date																	_ptd
 /*
 		EDD dates:
@@ -810,6 +832,7 @@ from (
 														else null
 													end, ' | ')																							_addl_issue_date
 										from public.focus__shipments s
+									-- join charges and further attribute them using "portal.charge_service_mapping oc"
 										left join public.focus__costs_revenues_items c 
 											on c."Shipment ID" = s."ID" 
 											and c.iss_domain = s.iss_domain 
@@ -1213,7 +1236,8 @@ from (
 								,null::date 																						_revised_etd
 								,null::date 																						_etd_wakeo
 								,null::date 																						_full_etd
-								,null::date 																						_ptd_date
+								,null::date 																						_pta
+								,null::date 																						_ptd
 								,null::date 																						_first_etd_po
 								,null::date 																						_current_edd_po
 								,null::date 																						_first_etd_fo
