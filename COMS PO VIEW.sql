@@ -18,6 +18,17 @@ $sql$
 select 
 	m.*
 /*
+	EDD dates: 
+		* First EDD (FO line) as is, current EDD (FO line) as is, Current EDD (PO line)
+		* Current EDD (PO line): rename PO LINE EDD -> Final Expected Delivery Date (values only for fully covered ordered qty in PO; if enriched qty total < ordered then do not show)
+*/
+	,m._first_edd_fo																													_first_edd_fo
+	,m._current_edd_fo																												_current_edd_fo
+	,case 
+		when _line_type = 'Pending' and _original_po_qty = _shipped
+			then m._current_edd_po
+		else null end 																												_final_expected_del_date
+/*
 	Exceptions logic
 */
 	,case 
