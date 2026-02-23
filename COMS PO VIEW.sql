@@ -27,7 +27,7 @@ select
 			then 'yellow'
 		when _line_type = 'Enriched'	and _fo_serial is not null and _original_po_qty = _shipped
 			then 'blank'
-		when _line_type = 'Pending' and (count(_fo_id) over(partition by _po_no_ekporef)) > 0
+		when _line_type = 'Pending' and _original_po_qty = _shipped
 			then 'green'
 		else null
 	end																																_po_acknowledgement_expt
@@ -526,28 +526,18 @@ from (
 		-- costs
 					,_aux_charge_type																								_aux_charge_type
   				  	,fe.ancillary_charge_form_no																						_aux_charge_form_no	
-  				  	,coalesce(nullif(costs._org_charges_aed,0), costs._org_charges_other_2_aed)										_org_charges_aed
-					,coalesce(nullif(costs._dest_charges_aed,0), costs._dest_charges_other_2_aed)										_dest_charges_aed
-					,coalesce(nullif(costs._frt_charges_aed,0), costs._frt_charges_other_2_aed)										_frt_charges_aed
-					,coalesce(nullif(costs._aux_charges_aed,0), costs._aux_charges_other_2_aed)										_aux_charges_aed
-					,coalesce(nullif(costs._org_charges_aed,0), costs._org_charges_other_2_aed) 
-						+ coalesce(nullif(costs._frt_charges_aed,0), costs._frt_charges_other_2_aed) 
-						+ coalesce(nullif(costs._dest_charges_aed,0), costs._dest_charges_other_2_aed)								_p2p_value_aed
-					,coalesce(nullif(costs._org_charges_aed,0), costs._org_charges_other_2_aed) 
-						+ coalesce(nullif(costs._frt_charges_aed,0), costs._frt_charges_other_2_aed) 
-						+ coalesce(nullif(costs._dest_charges_aed,0), costs._dest_charges_other_2_aed)
-						+ coalesce(nullif(costs._aux_charges_aed,0), costs._aux_charges_other_2_aed)									_total_charges_aed
-					,coalesce(nullif(costs._org_charges_aed,0), costs._org_charges_other_2_aed) / 3.6									_org_charges_usd
-					,coalesce(nullif(costs._dest_charges_aed,0), costs._dest_charges_other_2_aed) / 3.6								_dest_charges_usd
-					,coalesce(nullif(costs._frt_charges_aed,0), costs._frt_charges_other_2_aed) / 3.6									_frt_charges_usd
-					,coalesce(nullif(costs._aux_charges_aed,0), costs._aux_charges_other_2_aed) / 3.6									_aux_charges_usd
-					,coalesce(nullif(costs._org_charges_aed,0), costs._org_charges_other_2_aed) 
-						+ coalesce(nullif(costs._frt_charges_aed,0), costs._frt_charges_other_2_aed) 
-						+ coalesce(nullif(costs._dest_charges_aed,0), costs._dest_charges_other_2_aed) / 3.6							_p2p_value_usd
-					,coalesce(nullif(costs._org_charges_aed,0), costs._org_charges_other_2_aed) 
-						+ coalesce(nullif(costs._frt_charges_aed,0), costs._frt_charges_other_2_aed) 
-						+ coalesce(nullif(costs._dest_charges_aed,0), costs._dest_charges_other_2_aed)
-						+ coalesce(nullif(costs._aux_charges_aed,0), costs._aux_charges_other_2_aed) / 3.6							_total_charges_usd
+  				  	,_org_charges_local																								_org_charges_aed
+					,_dest_charges_local																								_dest_charges_aed
+					,_frt_charges_local																								_frt_charges_aed
+					,_aux_charges_local																								_aux_charges_aed
+					,_org_charges_local	+ _frt_charges_local + _dest_charges_local													_p2p_value_aed
+					,_org_charges_local	+ _frt_charges_local + _dest_charges_local + _aux_charges_local								_total_charges_aed
+					,_org_charges_usd																								_org_charges_usd
+					,_dest_charges_usd																								_dest_charges_usd
+					,_frt_charges_usd																								_frt_charges_usd
+					,_aux_charges_usd																								_aux_charges_usd
+					,_org_charges_usd + _frt_charges_usd + _dest_charges_usd															_p2p_value_usd
+					,_org_charges_usd + _frt_charges_usd + _dest_charges_usd + _aux_charges_usd										_total_charges_usd
 		-- invoices
 					,costs._issued_invoices																							_invoice_no
 				    ,costs._issue_date::date																							_invoice_issue_date
@@ -765,50 +755,51 @@ from (
 											s."ID" 																										_ship_id
 											,s."Serial No" 																								_ship_serial
 											,s."Operational Status"																						_ship_focus_status
-									-- ORIGIN CHARGES; separate AED amount from OTHER cur amount (just a useful feature for debugging; remove later)
+									-- ORIGIN CHARGE
 											,sum(case 
-												when c."Currency" = 'AED' and oc.category = 'Origin Charge'
+												when c."Currency" = 'USD' and oc.category = 'Origin Charge'
 													then c."Selling Rate" * c."Selling Quantity" 
-												else 0
-											end)																											_org_charges_aed		
+												when c."Currency" <> 'USD' and oc.category = 'Origin Charge'
+													then c."Selling Rate" * c."Selling Quantity" * "Selling Local Exchange Rate" * er."Exchange Rate"
+											end)																											_org_charges_usd	
 											,sum(case 
-												when c."Currency" <> 'AED' and oc.category = 'Origin Charge'
-													then c."Selling Rate" * c."Selling Quantity" * coalesce(er."From", er."To")
-												else 0
-											end)																											_org_charges_other_2_aed
+												when c."Currency" = 'USD' and oc.category = 'Origin Charge'
+													then c."Selling Rate" * c."Selling Quantity" * "Selling Local Exchange Rate"
+												else null end)																							_org_charges_local
 									-- DEST CHARGES	
 											,sum(case 
-												when c."Currency" = 'AED' and oc.category = 'Destination Charge'
+												when c."Currency" = 'USD' and oc.category = 'Destination Charge'
 													then c."Selling Rate" * c."Selling Quantity" 
-												else 0
-											end)																											_dest_charges_aed		
+												when c."Currency" <> 'USD' and oc.category = 'Destination Charge'
+													then c."Selling Rate" * c."Selling Quantity" * "Selling Local Exchange Rate" * er."Exchange Rate"
+											end)																											_dest_charges_usd	
 											,sum(case 
-												when c."Currency" <> 'AED' and oc.category = 'Destination Charge'
-													then c."Selling Rate" * c."Selling Quantity" * coalesce(er."From", er."To")
-												else 0
-											end)																											_dest_charges_other_2_aed
+												when c."Currency" = 'USD' and oc.category = 'Destination Charge'
+													then c."Selling Rate" * c."Selling Quantity" * "Selling Local Exchange Rate"
+												else null end)																							_dest_charges_local
 									-- FREIGHT CHARGES	
 											,sum(case 
-												when c."Currency" = 'AED' and oc.category = 'Freight Charge'
-													then c."Selling Rate" * c."Selling Quantity"
-												else 0
-											end)																											_frt_charges_aed		
+												when c."Currency" = 'USD' and oc.category = 'Freight Charge'
+													then c."Selling Rate" * c."Selling Quantity" 
+												when c."Currency" <> 'USD' and oc.category = 'Freight Charge'
+													then c."Selling Rate" * c."Selling Quantity" * "Selling Local Exchange Rate" * er."Exchange Rate"
+											end)																											_frt_charges_usd	
 											,sum(case 
-												when c."Currency" <> 'AED' and oc.category = 'Freight Charge'
-													then c."Selling Rate" * c."Selling Quantity" * coalesce(er."From", er."To")
-												else 0
-											end)																											_frt_charges_other_2_aed
+												when c."Currency" = 'USD' and oc.category = 'Freight Charge'
+													then c."Selling Rate" * c."Selling Quantity" * "Selling Local Exchange Rate"
+												else null end)																							_frt_charges_local
 									-- AUX CHARGES	
 											,sum(case 
-												when c."Currency" = 'AED' and oc.category = 'Ancillary Charge'
+												when c."Currency" = 'USD' and oc.category = 'Ancillary Charge'
 													then c."Selling Rate" * c."Selling Quantity" 
-												else 0
-											end)																											_aux_charges_aed		
+												when c."Currency" <> 'USD' and oc.category = 'Ancillary Charge'
+													then c."Selling Rate" * c."Selling Quantity" * "Selling Local Exchange Rate" * er."Exchange Rate"
+											end)																											_aux_charges_usd	
 											,sum(case 
-												when c."Currency" <> 'AED' and oc.category = 'Ancillary Charge'
-													then c."Selling Rate" * c."Selling Quantity" * coalesce(er."From", er."To")
-												else 0
-											end)																											_aux_charges_other_2_aed
+												when c."Currency" = 'USD' and oc.category = 'Ancillary Charge'
+													then c."Selling Rate" * c."Selling Quantity" * "Selling Local Exchange Rate"
+												else null end )																							_aux_charges_local
+									-- other info
 											,string_agg(
 													case 
 														when oc.category = 'Ancillary Charge' 
@@ -843,12 +834,12 @@ from (
 										left join public.focus__costs_revenues_items c 
 											on c."Shipment ID" = s."ID" 
 											and c.iss_domain = s.iss_domain 
+										left join public.analytical__currencies ac
+											on ac.iss_domain = s.iss_domain
 									-- join exchange rates (further logic update and data fix is required)
-										left join public.focus__exchange_rates er 
-											on er."Cost Exchange Rate" = c."Currency"
-											and er."Created At"::date = '2025-09-30'
-											and er."Cost Exchange Rate" <> 'AED'
-											and er."Selling Exchange Rate" = 'AED'
+										left join public.analytical__exchange_rates er 
+											on er."cur2" = ac."currency"
+											and er."Date" = '2025-03-13'
 									-- attr for CHarge types
 										left join portal.charge_service_mapping oc
 											on upper(trim(oc.service)) = upper(trim(s."Service")) 
@@ -1376,5 +1367,7 @@ $sql$;
 update sql_source 
 set _code = current_setting('dev.po_view') 
 	,_updated = now() 
-where _page = 'PO VIEW' and _report = 'COMS';
+where 1=1
+	and _page = 'PO VIEW' 
+	and _report = 'COMS';
 

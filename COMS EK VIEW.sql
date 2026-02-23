@@ -520,11 +520,17 @@ $sql$
   				  	,fe.ancillary_charge_form_no																						_aux_charge_form_no
   					,slt.avg_lead_time																								_supplier_lead_time
   					,ctt.average_transit_time																						_country_lead_time
-  			-- costs
-  					,costs._org_charges_aed + costs._org_charges_other_2_aed															_org_charges_aed
-  					,costs._dest_charges_aed + costs._dest_charges_other_2_aed														_dest_charges_aed
-  					,costs._frt_charges_aed + costs._frt_charges_other_2_aed															_frt_charges_aed
-  					,costs._aux_charges_aed + costs._aux_charges_other_2_aed															_aux_charges_aed
+  			-- LOCAL costs
+  					,costs._org_charges_local																						_org_charges_aed
+  					,costs._dest_charges_local																						_dest_charges_aed
+  					,costs._frt_charges_local																						_frt_charges_aed
+  					,costs._aux_charges_local																						_aux_charges_aed
+  			-- USD costs
+  					,costs._org_charges_usd																							_org_charges_usd
+  					,costs._dest_charges_usd																							_dest_charges_usd
+  					,costs._frt_charges_usd																							_frt_charges_usd
+  					,costs._aux_charges_usd																							_aux_charges_usd
+  			-- other costs related data
   				    ,costs._issued_invoices																							_invoice_no
 				    ,costs._issue_date																								_invoice_issue_date
 				    ,costs._addl_issued_invoices																						_addl_issued_invoices
@@ -639,110 +645,110 @@ $sql$
 					on cv._ship_id = fs."ID"
 			-- costs + focus oper_status
 				left join (
-								select 
-									s."ID" 																										_ship_id
---									,s."Created At"::date																						_ship_created_date
-									,s."Serial No" 																								_ship_serial
-									,s."Operational Status"																						_ship_focus_status
---										,s."Service" 
-							-- ORIGIN CHARGES; separate AED amount from OTHER cur amount (just a useful feature for debugging; remove later)
-									,sum(case 
-										when c."Currency" = 'AED' and oc.category = 'Origin Charge'
-											then c."Selling Rate" * c."Selling Quantity" * c."Selling Local Exchange Rate" 
-										else 0
-									end)																											_org_charges_aed		
-									,sum(case 
-										when c."Currency" <> 'AED' and oc.category = 'Origin Charge'
-											then c."Selling Rate" * c."Selling Quantity" * c."Selling Local Exchange Rate" * coalesce(er."From", er."To")
-										else 0
-									end)																											_org_charges_other_2_aed
-							-- DEST CHARGES	
-									,sum(case 
-										when c."Currency" = 'AED' and oc.category = 'Destination Charge'
-											then c."Selling Rate" * c."Selling Quantity" * c."Selling Local Exchange Rate" 
-										else 0
-									end)																											_dest_charges_aed		
-									,sum(case 
-										when c."Currency" <> 'AED' and oc.category = 'Destination Charge'
-											then c."Selling Rate" * c."Selling Quantity" * c."Selling Local Exchange Rate" * coalesce(er."From", er."To")
-										else 0
-									end)																											_dest_charges_other_2_aed
-							-- FREIGHT CHARGES	
-									,sum(case 
-										when c."Currency" = 'AED' and oc.category = 'Freight Charge'
-											then c."Selling Rate" * c."Selling Quantity" * c."Selling Local Exchange Rate" 
-										else 0
-									end)																											_frt_charges_aed		
-									,sum(case 
-										when c."Currency" <> 'AED' and oc.category = 'Freight Charge'
-											then c."Selling Rate" * c."Selling Quantity" * c."Selling Local Exchange Rate" * coalesce(er."From", er."To")
-										else 0
-									end)																											_frt_charges_other_2_aed
-							-- AUX CHARGES	
-									,sum(case 
-										when c."Currency" = 'AED' and oc.category = 'Ancillary Charge'
-											then c."Selling Rate" * c."Selling Quantity" * c."Selling Local Exchange Rate" 
-										else 0
-									end)																											_aux_charges_aed		
-									,sum(case 
-										when c."Currency" <> 'AED' and oc.category = 'Ancillary Charge'
-											then c."Selling Rate" * c."Selling Quantity" * c."Selling Local Exchange Rate" * coalesce(er."From", er."To")
-										else 0
-									end)																											_aux_charges_other_2_aed
-									,string_agg(
-											case 
-												when oc.category = 'Ancillary Charge' 
-													then c."Extra Info"
-												else null
-											end, ' | ') 																							_aux_charge_type	
-								-- xl table mapping name: Invoice #
-									,string_agg(
-											case
-												when oc.category <> 'Ancillary Charge' then inv."Serial No"
-												else null
-											end, ' | ')																							_issued_invoices
-								-- xl table mapping name: Billing month
-									,string_agg(
-											case 
-												when oc.category <> 'Ancillary Charge'
-													then to_char(inv."Issue Date"::date, 'MON-yyyy')
-												else null
-											end, ' | ')																							_issue_date
-									,string_agg(
-											case
-												when oc.category = 'Ancillary Charge' then inv."Serial No"
-												else null
-											end, ' | ')																							_addl_issued_invoices
-									,string_agg(
-											case 
-												when oc.category = 'Ancillary Charge'
-													then to_char(inv."Issue Date"::date, 'MON-yyyy')
-												else null
-											end, ' | ')																							_addl_issue_date
-								from public.focus__shipments s
-								left join public.focus__costs_revenues_items c 
-									on c."Shipment ID" = s."ID" 
-									and c.iss_domain = s.iss_domain 
-							-- join exchange rates (further logic update and data fix is required)
-								left join public.focus__exchange_rates er 
-									on er."Cost Exchange Rate" = c."Currency"
-									and er."Created At"::date = '2025-09-30'
-									and er."Cost Exchange Rate" <> 'AED'
-									and er."Selling Exchange Rate" = 'AED'
-							-- attr for CHarge types
-								left join portal.charge_service_mapping oc
-									on upper(trim(oc.service)) = upper(trim(s."Service")) 
-									and upper(trim(oc.charge)) = upper(trim(c."Charge Name"))
-									and oc.status = 'Active'
-								left join public.focus__issued_invoices inv 
-									on inv."ID" = (replace(split_part(c."Customer Invoice ID",',',1), '.0',''))::int 
-									and inv.iss_domain = c.iss_domain
-									and inv."Voided"::int = 0
-								where 1=1
-							-- added condition check to speed up query
-									and exists (select 1 from portal.freight_unit f where 1=1 and f.shipment_serial_no = s."Serial No")
-								group by 
-									1,2,3
+										select 
+											s."ID" 																										_ship_id
+											,s."Serial No" 																								_ship_serial
+											,s."Operational Status"																						_ship_focus_status
+									-- ORIGIN CHARGE
+											,sum(case 
+												when c."Currency" = 'USD' and oc.category = 'Origin Charge'
+													then c."Selling Rate" * c."Selling Quantity" 
+												when c."Currency" <> 'USD' and oc.category = 'Origin Charge'
+													then c."Selling Rate" * c."Selling Quantity" * "Selling Local Exchange Rate" * er."Exchange Rate"
+											end)																											_org_charges_usd	
+											,sum(case 
+												when c."Currency" = 'USD' and oc.category = 'Origin Charge'
+													then c."Selling Rate" * c."Selling Quantity" * "Selling Local Exchange Rate"
+												else null end)																							_org_charges_local
+									-- DEST CHARGES	
+											,sum(case 
+												when c."Currency" = 'USD' and oc.category = 'Destination Charge'
+													then c."Selling Rate" * c."Selling Quantity" 
+												when c."Currency" <> 'USD' and oc.category = 'Destination Charge'
+													then c."Selling Rate" * c."Selling Quantity" * "Selling Local Exchange Rate" * er."Exchange Rate"
+											end)																											_dest_charges_usd	
+											,sum(case 
+												when c."Currency" = 'USD' and oc.category = 'Destination Charge'
+													then c."Selling Rate" * c."Selling Quantity" * "Selling Local Exchange Rate"
+												else null end)																							_dest_charges_local
+									-- FREIGHT CHARGES	
+											,sum(case 
+												when c."Currency" = 'USD' and oc.category = 'Freight Charge'
+													then c."Selling Rate" * c."Selling Quantity" 
+												when c."Currency" <> 'USD' and oc.category = 'Freight Charge'
+													then c."Selling Rate" * c."Selling Quantity" * "Selling Local Exchange Rate" * er."Exchange Rate"
+											end)																											_frt_charges_usd	
+											,sum(case 
+												when c."Currency" = 'USD' and oc.category = 'Freight Charge'
+													then c."Selling Rate" * c."Selling Quantity" * "Selling Local Exchange Rate"
+												else null end)																							_frt_charges_local
+									-- AUX CHARGES	
+											,sum(case 
+												when c."Currency" = 'USD' and oc.category = 'Ancillary Charge'
+													then c."Selling Rate" * c."Selling Quantity" 
+												when c."Currency" <> 'USD' and oc.category = 'Ancillary Charge'
+													then c."Selling Rate" * c."Selling Quantity" * "Selling Local Exchange Rate" * er."Exchange Rate"
+											end)																											_aux_charges_usd	
+											,sum(case 
+												when c."Currency" = 'USD' and oc.category = 'Ancillary Charge'
+													then c."Selling Rate" * c."Selling Quantity" * "Selling Local Exchange Rate"
+												else null end )																							_aux_charges_local
+									-- other info
+											,string_agg(
+													case 
+														when oc.category = 'Ancillary Charge' 
+															then c."Extra Info"
+														else null
+													end, ' | ') 																							_aux_charge_type	
+										-- xl table mapping name: Invoice #
+											,string_agg(
+													case
+														when oc.category <> 'Ancillary Charge' then inv."Serial No"
+														else null
+													end, ' | ')																							_issued_invoices
+										-- xl table mapping name: Billing month
+											,string_agg(
+													case 
+														when oc.category <> 'Ancillary Charge'
+															then to_char(inv."Issue Date"::date, 'MON-yyyy')
+														else null
+													end, ' | ')																							_issue_date
+											,string_agg(
+													case
+														when oc.category = 'Ancillary Charge' then inv."Serial No"
+														else null
+													end, ' | ')																							_addl_issued_invoices
+											,string_agg(
+													case 
+														when oc.category = 'Ancillary Charge'
+															then to_char(inv."Issue Date"::date, 'MON-yyyy')
+														else null
+													end, ' | ')																							_addl_issue_date
+										from public.focus__shipments s
+										left join public.focus__costs_revenues_items c 
+											on c."Shipment ID" = s."ID" 
+											and c.iss_domain = s.iss_domain 
+										left join public.analytical__currencies ac
+											on ac.iss_domain = s.iss_domain
+									-- join exchange rates (further logic update and data fix is required)
+										left join public.analytical__exchange_rates er 
+											on er."cur2" = ac."currency"
+											and er."Date" = '2025-03-13'
+									-- attr for CHarge types
+										left join portal.charge_service_mapping oc
+											on upper(trim(oc.service)) = upper(trim(s."Service")) 
+											and upper(trim(oc.charge)) = upper(trim(c."Charge Name"))
+											and oc.status = 'Active'
+										left join public.focus__issued_invoices inv 
+											on inv."ID" = (replace(split_part(c."Customer Invoice ID",',',1), '.0',''))::int 
+											and inv.iss_domain = c.iss_domain
+											and inv."Voided"::int = 0
+										where 1=1
+									-- added condition check to speed up query
+											and exists (select 1 from portal.freight_unit f where 1=1 and f.shipment_serial_no = s."Serial No")
+							--				and s."ID" = 2364938
+										group by 
+											1,2,3
 							) costs 
 		-- conditional join to join on remote_shipment_serail OR main_shipments_serial
 					on costs._ship_serial = feic._ship_response ->> 'serial_no'
@@ -1163,18 +1169,21 @@ select
 	,max(_health_check)																	_health_check
 	,max(_reason_code)																	_reason_code
 	,max(_aux_charge_type)																_aux_charge_type
-	,max(_org_charges_aed)																	_org_charges_aed
-	,max(_dest_charges_aed)																	_dest_charges_aed
-	,max(_frt_charges_aed)																	_frt_charges_aed
-	,max(_aux_charges_aed)																	_aux_charges_aed
-	,max(_org_charges_aed + _frt_charges_aed + _dest_charges_aed)									_p2p_value_aed
-	,max(_org_charges_aed + _frt_charges_aed + _dest_charges_aed + _aux_charges_aed)					_total_charges_aed
-	,max(_org_charges_aed * 3.6) 															_org_charges_usd
-	,max(_dest_charges_aed * 3.6)															_dest_charges_usd
-	,max(_frt_charges_aed * 3.6)															_frt_charges_usd
-	,max(_aux_charges_aed * 3.6)															_aux_charges_usd
-	,max((_org_charges_aed + _frt_charges_aed + _dest_charges_aed) * 3.6)							_p2p_value_usd
-	,max((_org_charges_aed + _frt_charges_aed + _dest_charges_aed + _aux_charges_aed) * 3.6)			_total_charges_usd
+-- LOCAL costs
+	,max(_org_charges_aed)																_org_charges_aed
+	,max(_dest_charges_aed)																_dest_charges_aed
+	,max(_frt_charges_aed)																_frt_charges_aed
+	,max(_aux_charges_aed)																_aux_charges_aed
+	,max(_org_charges_aed + _frt_charges_aed + _dest_charges_aed)							_p2p_value_aed
+	,max(_org_charges_aed + _frt_charges_aed + _dest_charges_aed + _aux_charges_aed)		_total_charges_aed
+-- USD costs
+	,max(_org_charges_usd)	 															_org_charges_usd
+	,max(_dest_charges_usd)																_dest_charges_usd
+	,max(_frt_charges_usd)																_frt_charges_usd
+	,max(_aux_charges_usd)																	_aux_charges_usd
+	,max(_org_charges_usd + _frt_charges_usd + _dest_charges_usd)							_p2p_value_usd
+	,max(_org_charges_usd + _frt_charges_usd + _dest_charges_usd + _aux_charges_usd)		_total_charges_usd
+-- other costs related cols
 	,max(_aux_charge_form_no)															_aux_charge_form_no
 	,max(_supplier_lead_time) filter(where _sort = 1)										_supplier_lead_time
 	,max(_country_lead_time)	filter(where _sort = 1)										_country_lead_time
@@ -1410,7 +1419,7 @@ $sql$;
 update sql_source 
 set _code = current_setting('dev.ek_view')
 	,_updated = now() 
-where _name = 'EK VIEW' and _report = 'COMS';
+where _page = 'EK VIEW' and _report = 'COMS';
 
 
 

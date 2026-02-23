@@ -95,7 +95,7 @@ $sql$
 		on x."ID" = s."CRM Contact ID"
 	where 1=1
 		and s."Operational Date" is not null 
-		and s."Operational Date" <> ''
+
 
 $sql$
 

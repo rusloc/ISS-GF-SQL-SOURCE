@@ -4,7 +4,7 @@
 
 -- set var value (assign code)
 set dev.users_login = 
-$sql$
+--$sql$
 
 
 select 
@@ -21,7 +21,7 @@ select
 	,u."createdAt"::date													_user_created_date
 	,upper(c."name") 													_company										
 	,b."name" 															_branch
-,upper(b.country) 														_branch_country
+	,upper(b.country) 														_branch_country
 	,upper(b.city) 														_branch_city
 	,case 
 		when a._active = 1
@@ -46,7 +46,7 @@ left join portal."CompanyBranch" b
 left join (
 				select 
 					l."userId"
-					,count(*)									_active
+					,count(*)											_active
 				from portal."UserLoginHistory" l
 				group by 1
 			) a 
