@@ -30,21 +30,24 @@ select
 	Exceptions logic
 */
 	,case 
-		when _line_type = 'Enriched'	and _fo_serial is null 
+-- pending / closed / complete conditionns
+		when _line_type = 'Pending' 
+		and count(*) filter(where _line_type = 'Enriched') over(partition by _po_no_ekporef) = 0
 			then 'red'
+		when _line_type = 'Pending'
+		and count(*) filter(where _line_type = 'Enriched') over(partition by _po_no_ekporef) > 0
+		and sum(_shipped) over(partition by m._po_no_ekporef) < sum(_original_po_qty) filter(where _line_type in ('Closed','Pending','Completed')) over(partition by m._po_no_ekporef)
+			then 'yellow'
+		when _line_type in ('Pending','Closed','Completed')
+		and sum(_shipped) over(partition by m._po_no_ekporef) = sum(_original_po_qty) filter(where _line_type in ('Closed','Pending','Completed')) over(partition by m._po_no_ekporef)
+			then 'green'
+-- enriched conditions
+		when _line_type = 'Enriched'	
+		and sum(_shipped) over(partition by m._po_no_ekporef) = sum(_original_po_qty) filter(where _line_type in ('Closed','Pending','Completed')) over(partition by m._po_no_ekporef)
+			then 'green'
 		when _line_type = 'Enriched'	and _fo_serial is not null and _original_po_qty > _shipped
 		and sum(_shipped) over(partition by m._po_no_ekporef) <> sum(_original_po_qty) filter(where _line_type in ('Closed','Pending')) over(partition by m._po_no_ekporef)
 			then 'yellow'
-		when _line_type = 'Enriched'	and _fo_serial is not null and _original_po_qty = _shipped
-		and sum(_shipped) over(partition by m._po_no_ekporef) <> sum(_original_po_qty) filter(where _line_type in ('Closed','Pending')) over(partition by m._po_no_ekporef)
-			then 'blank'
-		when _line_type = 'Enriched'	
-		and sum(_shipped) over(partition by m._po_no_ekporef) = sum(_original_po_qty) filter(where _line_type in ('Closed','Pending')) over(partition by m._po_no_ekporef)
-			then 'green'
-		when _line_type = 'Pending' and _original_po_qty = _shipped
-			then 'green'
-		when _line_type = 'Closed' and _qnty_shipped_remaning is null 
-			then 'green'
 		else null
 	end																																_po_acknowledgement_expt
 	,case 
@@ -116,7 +119,7 @@ from (
 					,pol."ship_to_location" 																							_branch_bu
 					,pol.supplier_no		 																							_supplier_code
 					,pol.supplier_name 																								_supplier_name
-					,pol.po_no 																										_po_no_EKPOREF
+					,pol.po_no 																										_po_no_ekporef
 					,pol.po_remarks 																									_po_remarks
 					,pol.po_desc 																									_commodity
 					,pol.po_type																										_po_type
@@ -381,10 +384,10 @@ from (
 										ports.country
 				               		from (	
 				               						select *, 'sea'
-				               						from portal.ports p
+				               						from portal..ports p
 				               						union all
 				               						select *, 'air'
-				               						from portal.airports a
+				               						from portal..airports a
 				               						where 1=1 
 				               							and airport <> 'TBA'
 				               					) ports
@@ -395,7 +398,7 @@ from (
 							then (
 									select 
 										ports.country
-				               		from portal.ports ports
+				               		from portal..ports ports
 				              		where 1=1 
 				              			and ports.port::text = feic._ship_response ->> 'origin_port' 
 				             		limit 1)
@@ -403,7 +406,7 @@ from (
 							then (
 									select 
 										ports.country
-				               		from portal.airports ports
+				               		from portal..airports ports
 				              		where 1=1 
 				              			and ports.airport::text = feic._ship_response ->> 'origin_port' 
 				             		limit 1)
@@ -417,10 +420,10 @@ from (
 										ports.region
 				               		from (	
 				               						select *, 'sea'
-				               						from portal.ports p
+				               						from portal..ports p
 				               						union all
 				               						select *, 'air'
-				               						from portal.airports a
+				               						from portal..airports a
 				               						where 1=1 
 				               							and airport <> 'TBA'
 				               					) ports
@@ -431,7 +434,7 @@ from (
 							then (
 									select 
 										ports.region
-				               		from portal.ports ports
+				               		from portal..ports ports
 				              		where 1=1 
 				              			and ports.port::text = feic._ship_response ->> 'origin_port' 
 				             		limit 1)
@@ -439,7 +442,7 @@ from (
 							then (
 									select 
 										ports.region
-				               		from portal.airports ports
+				               		from portal..airports ports
 				              		where 1=1 
 				              			and ports.airport::text = feic._ship_response ->> 'origin_port' 
 				             		limit 1)
@@ -509,10 +512,10 @@ from (
 										ports.region
 				               		from (	
 				               						select *, 'sea'
-				               						from portal.ports p
+				               						from portal..ports p
 				               						union all
 				               						select *, 'air'
-				               						from portal.airports a
+				               						from portal..airports a
 				               						where 1=1 
 				               							and airport <> 'TBA'
 				               					) ports
@@ -523,7 +526,7 @@ from (
 							then (
 									select 
 										ports.region
-				               		from portal.ports ports
+				               		from portal..ports ports
 				              		where 1=1 
 				              			and ports.port::text = feic._ship_response ->> 'destination_port' 
 				             		limit 1)
@@ -531,7 +534,7 @@ from (
 							then (
 									select 
 										ports.region
-				               		from portal.airports ports
+				               		from portal..airports ports
 				              		where 1=1 
 				              			and ports.airport::text = feic._ship_response ->> 'destination_port' 
 				             		limit 1)
@@ -675,20 +678,20 @@ from (
   						when att._rows is null and fs."ID" is not null
   							then 'No' 
   						else null end																								_dn
-				from portal.purchase_order_on_freight_unit pofu
-				inner join portal.purchase_order_company poc 
+				from portal..purchase_order_on_freight_unit pofu
+				inner join portal..purchase_order_company poc 
 					on poc.id = pofu.purchase_order_company_id 
 		-- wrapped into a subquery to imitate real PO line id (used later to identify row in a PBI report table)
 				left join (
 							select 
 								*
 								,row_number() over(partition by pol.po_no order by pol.id)											_line_id
-							from portal."PurchaseOrderLine" pol
+							from portal.."PurchaseOrderLine" pol
 								) pol
 					on pol.id = pofu.purchase_order_id 
-				left join portal.freight_unit fu 
+				left join portal..freight_unit fu 
 					on fu.id = pofu.freight_unit_id 
-				left join portal.freight_unit_enrich fe 
+				left join portal..freight_unit_enrich fe 
 					on fe.unit_no = fu.unit_no
 		/*
 		 * critical data join: if [ordering comp iss_dom] = freight_unit_enrich.iss_Dom => use [shipment_response] 
@@ -698,7 +701,7 @@ from (
 								select 
 									*
 									,fem.shipment_response 						_ship_response
-								from portal.freight_unit_enrich fem
+								from portal..freight_unit_enrich fem
 								where 1=1
 									and fem.unit_no = fu.unit_no 
 									and fem.iss_domain = poc.iss_domain 
@@ -706,7 +709,7 @@ from (
 								select 
 									*
 									,fer.remote_shipment_response				_ship_response
-								from portal.freight_unit_enrich fer
+								from portal..freight_unit_enrich fer
 								where 1=1
 									and fer.unit_no = fu.unit_no 
 									and fer.remote_iss_domain = poc.iss_domain
@@ -731,7 +734,7 @@ from (
 									car."carrierScac" 								_abbr
 									,car."name"										_name
 									,unnest(car."allScacs") 							_code
-								from portal."CarrierShipping" car
+								from portal.."CarrierShipping" car
 							) car 
 					on car._code = feic._ship_response ->> 'carrier'
 			-- customs declaration data
@@ -856,7 +859,7 @@ from (
 											on er."cur2" = ac."currency"
 											and er."Date" = '2025-03-13'
 									-- attr for CHarge types
-										left join portal.charge_service_mapping oc
+										left join portal..charge_service_mapping oc
 											on upper(trim(oc.service)) = upper(trim(s."Service")) 
 											and upper(trim(oc.charge)) = upper(trim(c."Charge Name"))
 											and oc.status = 'Active'
@@ -866,16 +869,16 @@ from (
 											and inv."Voided"::int = 0
 										where 1=1
 									-- added condition check to speed up query
-											and exists (select 1 from portal.freight_unit f where 1=1 and f.shipment_serial_no = s."Serial No")
+											and exists (select 1 from portal..freight_unit f where 1=1 and f.shipment_serial_no = s."Serial No")
 							--				and s."ID" = 2364938
 										group by 
 											1,2,3
 							) costs 
 			-- conditional join to join on remote_shipment_serail OR main_shipments_serial
 					on costs._ship_serial = feic._ship_response ->> 'serial_no'
-				left join portal.supplier_lead_time_master slt 
+				left join portal..supplier_lead_time_master slt 
 					on (slt.supplier_id)::int = (pol.supplier_no)::int
-				left join portal.country_average_transit_time ctt
+				left join portal..country_average_transit_time ctt
 					on ctt.code = coalesce(feic._ship_response ->> 'origin_country',fe.origin_country)
 				where 1=1
 		)
@@ -1356,17 +1359,17 @@ from (
 									select 
 										*
 										,row_number() over(partition by pol.po_no order by pol.id)								_line_id
-									from portal."PurchaseOrderLine" pol
+									from portal.."PurchaseOrderLine" pol
 								) pol
 							left join (
 										select 
 											p.purchase_order_id
 											,sum(quantity::numeric)																quantity
-										from portal.purchase_order_on_freight_unit p
+										from portal..purchase_order_on_freight_unit p
 										group by 1
 									) pofu
 								on pofu.purchase_order_id = pol.id
-							left join portal.purchase_order_company poc 
+							left join portal..purchase_order_company poc 
 								on poc.id = pol.purchase_order_company_id
 							where 1=1
 --								and pol.id in (6420, 6421)
