@@ -22,10 +22,8 @@ select
 		* First EDD (FO line) as is, current EDD (FO line) as is, Current EDD (PO line)
 		* Current EDD (PO line): rename PO LINE EDD -> Final Expected Delivery Date (values only for fully covered ordered qty in PO; if enriched qty total < ordered then do not show)
 */
-	,m._first_edd_fo																													_first_edd_fo
-	,m._current_edd_fo																												_current_edd_fo
 	,case 
-		when _line_type = 'Pending' and _original_po_qty = _shipped
+		when _line_type in ('Pending', 'Closed', 'Completed') and _original_po_qty = _shipped
 			then m._current_edd_po
 		else null end 																												_final_expected_del_date
 /*
@@ -35,16 +33,22 @@ select
 		when _line_type = 'Enriched'	and _fo_serial is null 
 			then 'red'
 		when _line_type = 'Enriched'	and _fo_serial is not null and _original_po_qty > _shipped
+		and sum(_shipped) over(partition by m._po_no_ekporef) <> sum(_original_po_qty) filter(where _line_type in ('Closed','Pending')) over(partition by m._po_no_ekporef)
 			then 'yellow'
 		when _line_type = 'Enriched'	and _fo_serial is not null and _original_po_qty = _shipped
+		and sum(_shipped) over(partition by m._po_no_ekporef) <> sum(_original_po_qty) filter(where _line_type in ('Closed','Pending')) over(partition by m._po_no_ekporef)
 			then 'blank'
+		when _line_type = 'Enriched'	
+		and sum(_shipped) over(partition by m._po_no_ekporef) = sum(_original_po_qty) filter(where _line_type in ('Closed','Pending')) over(partition by m._po_no_ekporef)
+			then 'green'
 		when _line_type = 'Pending' and _original_po_qty = _shipped
+			then 'green'
+		when _line_type = 'Closed' and _qnty_shipped_remaning is null 
 			then 'green'
 		else null
 	end																																_po_acknowledgement_expt
 	,case 
-		when (_current_edd_fo > _po_need_by_date and _line_type = 'Enriched')
-			or (_line_type = 'Pending' and now() >= _po_need_by_date)
+		when (_current_edd_po > _po_need_by_date and _line_type = 'Enriched')
 			then 'red'
 		else null end 																												_po_line_item_delivery_expt
 	,case 
@@ -271,7 +275,7 @@ from (
 								then (feic._ship_response ->> 'arrival_date'::text)::date
 							else null end)
 						,(feic._ship_response ->> 'eta_wakeo_date'::text)::date
-						,(feic._ship_response ->> 'etd_date'::text)::date	))
+						,(feic._ship_response ->> 'eta_date'::text)::date	))
 						over(partition by pol.po_no) + interval '3 days'																_current_edd_po
 -- FO LEVEL EDD DATES
 					,min(coalesce(
@@ -285,7 +289,7 @@ from (
 								then (feic._ship_response ->> 'arrival_date'::text)::date
 							else null end)
 						,(feic._ship_response ->> 'eta_wakeo_date'::text)::date
-						,(feic._ship_response ->> 'etd_date'::text)::date	))
+						,(feic._ship_response ->> 'eta_date'::text)::date	))
 						over(partition by fu.id) + interval '3 days'																	_current_edd_fo
 -- other dates
 					,(select el ->> 'value'
@@ -1127,6 +1131,8 @@ from (
 										then 'Cancelled'
 									when regexp_match(pol.status, 'close','i') is not null
 										then 'Closed'	
+									when regexp_match(pol.status, 'comple','i') is not null
+										then 'Completed'
 									else 'Pending' end 																			_line_type 
 								,md5(pol.po_no || '-' 
 									|| pol.id ||  '-' 
@@ -1369,6 +1375,9 @@ from (
 --					and rem._qnty_shipped_remaning > 0 
 	) m 
 where 1=1
+--	and _po_no_ekporef = '424000447-24'
+	
+	
 
 $sql$;
 
