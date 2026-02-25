@@ -46,7 +46,7 @@ select
 		and sum(_shipped) over(partition by m._po_no_ekporef) = sum(_original_po_qty) filter(where _line_type in ('Closed','Pending','Completed')) over(partition by m._po_no_ekporef)
 			then 'green'
 		when _line_type = 'Enriched'	and _fo_serial is not null and _original_po_qty > _shipped
-		and sum(_shipped) over(partition by m._po_no_ekporef) <> sum(_original_po_qty) filter(where _line_type in ('Closed','Pending')) over(partition by m._po_no_ekporef)
+		and sum(_shipped) over(partition by m._po_no_ekporef) <> sum(_original_po_qty) filter(where _line_type in ('Closed','Pending','Completed')) over(partition by m._po_no_ekporef)
 			then 'yellow'
 		else null
 	end																																_po_acknowledgement_expt
