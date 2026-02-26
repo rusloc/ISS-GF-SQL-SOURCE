@@ -1,6 +1,18 @@
  
 /*
+ * General structure:
+ * 		* PO enriched block (first block of the query) has following structure:
+ * 			> pre-calc CTE: main query with main FROM & JOINs
+ * 			> calc CTE: based on pre-calc which calculates additional metrics  on top of pre-calc
+ * 			> main CTE: which calculates final metrics utilizing both precending CTEs
+ * 		* PO pending block
+ * 			> one query which captures PO lines for those POs with remaining quantity > 0
+ * 		* Wrapper (final) block:
+ * 			> wrapper for two preceding blocks: wraps (glues) both together into single table
+ * 			> adds Exceptions
+ * 
  * Logic:
+ * 
  * 		* PO lines are showing shipped & remaining
  * 		* shipped PO lines show all info for PO line + FO (shipment) line
  * 		* remainig PO lines show only remaning qnty (ordered qnty - shipped qnty)
@@ -16,6 +28,7 @@ set dev.po_view =
 $sql$ 
 
 select 
+	-- ############################################################### Wrapper (final) block ###############################################################
 	m.*
 /*
 	EDD dates: 
@@ -27,7 +40,7 @@ select
 			then m._current_edd_po
 		else null end 																												_final_expected_del_date
 /*
-	Exceptions logic
+	Exceptions block
 */
 	,case 
 -- pending / closed / complete conditions
@@ -36,6 +49,7 @@ select
 			then 'red'
 		when _line_type = 'Pending'
 		and count(*) filter(where _line_type = 'Enriched') over(partition by _po_no_ekporef) > 0
+-- check if the shipped totals equal to original PO-line totals
 		and sum(_shipped) over(partition by m._po_no_ekporef) < sum(_original_po_qty) filter(where _line_type in ('Closed','Pending','Completed')) over(partition by m._po_no_ekporef)
 			then 'yellow'
 		when _line_type in ('Pending','Closed','Completed')
@@ -56,8 +70,8 @@ select
 		else null end 																												_po_line_item_delivery_expt
 	,case 
 		when _line_type = 'Enriched'
-			and coalesce(_departure_date, _etd_wakeo, _ptd, _etd) > (coalesce(_crd,_est_cargo_ready_date) + interval '7 days')
-			and coalesce(_departure_date,_etd_wakeo,_ptd,_etd) > now()::date
+			and coalesce(_departure_date_actual, _etd_wakeo, _ptd, _etd) > (coalesce(_crd,_est_cargo_ready_date) + interval '7 days')
+			and coalesce(_departure_date_actual,_etd_wakeo,_ptd,_etd) > now()::date
 				then 'red'
 		else null
 	end																																_container_booking_perf_expt
@@ -82,7 +96,7 @@ select
 		else null
 	end																																_transit_delay_expt	
 from (
-	-- ####### shipped qnty ########
+	-- ############################################################### PO enriched block ###############################################################
 	with _pre_calc as(
 				select  
 					'Enriched'																										_line_type
@@ -152,6 +166,7 @@ from (
 						else feic._ship_response ->> 'shipping_terms'::text
 					end																												_incoterms_fo																						
 					,feic._ship_response ->> 'serial_no'																				_shipment_serial_iss_job
+					,(feic._ship_response ->> 'id')																					_response_shipment_id
 					,fe.shipment_response ->> 'serial_no'																			_inbound_iss_job_no
 					,fe.remote_shipment_response ->> 'serial_no'																		_outbound_iss_job_no
 					,feic._ship_response ->>  'house_no'::text																		_hbl_hawb
@@ -208,9 +223,10 @@ from (
 				    	,(feic._ship_response ->> 'delivery_date'::text)::date															_del
 					,(feic._ship_response ->> 'loading_date'::text)::date																_departure_date
 			-- >>>
-					,(select item ->> 'date'
+					,(select min(item ->> 'date')
 						from jsonb_array_elements(feic._ship_response::jsonb -> 'status_updates') item
-						where item ->> 'status' ilike '%Actual Time of Departure%')::date												_departure_date_actual
+						where item ->> 'status' ilike '%Actual Time of Departure%'
+								or item ->> 'status' ilike '%Vessel departure%')::date												_departure_date_actual
 					,(select el ->> 'value'
 				      from jsonb_array_elements(feic._ship_response::jsonb -> 'custom_dates') el
 				      where el ->> 'name' = 'Cargo Ready Date Actual')::date															_crd_actual
@@ -717,7 +733,7 @@ from (
 					on true
 				left join public.focus__shipments fs 
 					on fs."Serial No" = feic._ship_response ->> 'serial_no' 
-	-- if there s a doc with label AGI found for a shipment ID then 'Yes' else 'No'. While drafting SQL AGI param is not yet implemented
+	-- if there s a doc with label AGI found for a shipment ID then 'Yes' else 'No'. While drafting SQL - AGI param is not yet implemented
 				left join (
 								select 
 									a."Parent ID" 												_ship_id
@@ -992,8 +1008,22 @@ from (
 										then 'Severe'
 								end																												_health_check
 								,case 
+										when _full_etd is null 
+												then 'Pending'
+										when (_shipment_serial_iss_job <> '' or _shipment_serial_iss_job is not null)
+											and _full_eta <= now()::date
+											and _full_etd <= now()::date
+											and _del <= now()::date
+												then 'Delivered'
+										when (_shipment_serial_iss_job <> '' or _shipment_serial_iss_job is not null)
+											and regexp_match(_ship_focus_status,'cancel','i') is not null 
+												then 'Cancelled'
+										when (_shipment_serial_iss_job <> '' or _shipment_serial_iss_job is not null or _response_shipment_id is not null)
+											and _full_eta > now()::date
+											and _full_etd <= now()::date 
+												then 'In transit'
 										when (_shipment_serial_iss_job = '' or _shipment_serial_iss_job is null)
-											and y._fo_id is not null
+											and (y._fo_id is not null or _full_etd > now()::date)
 												then 'Ongoing'
 										when (_shipment_serial_iss_job is not null
 											and _shipment_serial_iss_job <> '')
@@ -1001,25 +1031,10 @@ from (
 											and 	_departure_date_actual is null
 												then 'Ongoing'
 										when (_shipment_serial_iss_job <> '' or _shipment_serial_iss_job is not null)
-											and regexp_match(_ship_focus_status,'cancel','i') is not null 
-												then 'Cancelled'
-										when (_shipment_serial_iss_job <> '' or _shipment_serial_iss_job is not null)
-											and _full_eta <= now()::date
-											and _full_etd <= now()::date
-											and _del <= now()::date
-												then 'Delivered'
-										when (_shipment_serial_iss_job <> '' or _shipment_serial_iss_job is not null)
 											and _full_eta <= now()::date
 											and _full_etd <= now()::date
 											and (_del is null or _del > now()::date)
 												then 'Arrived'
-										when (_shipment_serial_iss_job <> '' or _shipment_serial_iss_job is not null)
-											and _full_eta > now()::date
-											and _full_etd <= now()::date 
-												then 'In transit'
-										when (_shipment_serial_iss_job <> '' or _shipment_serial_iss_job is not null)
-											and _full_etd > now()::date
-												then 'Ongoing'
 										else null
 									end																											_status
 							,case 
@@ -1124,7 +1139,7 @@ from (
 			,(_org_charges_aed + _frt_charges_aed + _dest_charges_aed) * 3.6																		_p2p_value_usd
 		from _main m
 		union all
-	-- ############################################################### remaining qnty ###############################################################
+	-- ############################################################### PO pending block ###############################################################
 				select 
 					*
 				from (
@@ -1219,6 +1234,7 @@ from (
 								,null::text 																						_ship_billing_remarks
 								,null 																							_incoterms_fo
 								,null																							_shipment_serial_iss_job
+								,null																							_response_shipment_id
 								,null::text 																						_inbound_iss_job_no
 								,null::text 																						_outbound_iss_job_no
 								,null																							_hbl_hawb
