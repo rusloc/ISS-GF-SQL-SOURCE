@@ -81,7 +81,8 @@ left join (
 										,'ZIBU.ZACHARIAH@ISS-GF.COM'
 										,'JINESH.RAJAN@ISS-GF.COM'
 										,'RIYAZ.AHMED@ISS-GF.COM'	
-										,'MOHAMMAD.ABBAS@ISS-GF.COM'							
+										,'MOHAMMAD.ABBAS@ISS-GF.COM'	
+										,'MERIYA.SAJU@ISS-GF.COM'						
 								]
 					) a	
 			) g 	
@@ -464,10 +465,6 @@ inner join (
 									,('KRISHNAN.KRISHNAMURTHY@ISS-GF.COM','AEO3')
 									,('KRISHNAN.KRISHNAMURTHY@ISS-GF.COM','AEH1')
 									
-									,('MERIYA.SAJU@ISS-GF.COM','AEO2')
-									,('MERIYA.SAJU@ISS-GF.COM','AEO1')
-									,('MERIYA.SAJU@ISS-GF.COM','AEO3')
-									,('MERIYA.SAJU@ISS-GF.COM','AEH1')
 
 									,('STEPHANIE.CUPIDO@ISS-GF.COM','ZAO1')
 				) a
