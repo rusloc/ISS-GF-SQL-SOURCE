@@ -1,14 +1,14 @@
  
 /*
- * General structure:
+ * General SQL structure:
  * 		* PO enriched block (first block of the query) has following structure:
  * 			> pre-calc CTE: main query with main FROM & JOINs
  * 			> calc CTE: based on pre-calc which calculates additional metrics  on top of pre-calc
- * 			> main CTE: which calculates final metrics utilizing both precending CTEs
+ * 			> main CTE: calculates final metrics utilizing both precending CTEs
  * 		* PO pending block
  * 			> one query which captures PO lines for those POs with remaining quantity > 0
  * 		* Wrapper (final) block:
- * 			> wrapper for two preceding blocks: wraps (glues) both together into single table
+ * 			> first lines of SELECT with two blocks in a subquery: wraps (glues) both together into single table
  * 			> adds Exceptions
  * 
  * Logic:
