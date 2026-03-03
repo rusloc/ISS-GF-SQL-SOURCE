@@ -25,7 +25,7 @@
 
 -- set var: edit inline SQL source and run
 set dev.po_view = 
-$sql$ 
+--$sql$ 
 
 select 
 	-- ############################################################### Wrapper (final) block ###############################################################
@@ -42,59 +42,6 @@ select
 /*
 	Exceptions block
 */
-	,case 
--- pending / closed / complete conditions
-		when _line_type = 'Pending' 
-		and count(*) filter(where _line_type = 'Enriched') over(partition by _po_no_ekporef) = 0
-			then 'red'
-		when _line_type = 'Pending'
-		and count(*) filter(where _line_type = 'Enriched') over(partition by _po_no_ekporef) > 0
--- check if the shipped totals equal to original PO-line totals
-		and sum(_shipped) over(partition by m._po_no_ekporef) < sum(_original_po_qty) filter(where _line_type in ('Closed','Pending','Completed')) over(partition by m._po_no_ekporef)
-			then 'yellow'
-		when _line_type in ('Pending','Closed','Completed')
-		and sum(_shipped) over(partition by m._po_no_ekporef) = sum(_original_po_qty) filter(where _line_type in ('Closed','Pending','Completed')) over(partition by m._po_no_ekporef)
-			then 'green'
--- enriched conditions
-		when _line_type = 'Enriched'	
-		and sum(_shipped) over(partition by m._po_no_ekporef) = sum(_original_po_qty) filter(where _line_type in ('Closed','Pending','Completed')) over(partition by m._po_no_ekporef)
-			then 'green'
-		when _line_type = 'Enriched'	and _fo_serial is not null and _original_po_qty > _shipped
-		and sum(_shipped) over(partition by m._po_no_ekporef) <> sum(_original_po_qty) filter(where _line_type in ('Closed','Pending','Completed')) over(partition by m._po_no_ekporef)
-			then 'yellow'
-		else null
-	end																																_po_acknowledgement_expt
-	,case 
-		when (_current_edd_po > _po_need_by_date and _line_type = 'Enriched')
-			then 'red'
-		else null end 																												_po_line_item_delivery_expt
-	,case 
-		when _line_type = 'Enriched'
-			and coalesce(_departure_date_actual, _etd_wakeo, _ptd, _etd) > (coalesce(_crd,_est_cargo_ready_date) + interval '7 days')
-			and coalesce(_departure_date_actual,_etd_wakeo,_ptd,_etd) > now()::date
-				then 'red'
-		else null
-	end																																_container_booking_perf_expt
-	,case 
-		when _arrival_date is not null and _del is null and now()::date > (_arrival_date + interval '3 days')
-			then 'red'
-		else null
-	end																																_clearance_delivery_expt	
-	,case 
-		when _line_type = 'Enriched'
-			and coalesce(_departure_date_actual,_etd_wakeo, _ptd) > _full_etd and (_del is null or _del > now()::date)
-			then 'red'
-		when _line_type = 'Enriched'
-			and _full_etd is not null and _departure_date_actual is not null 
-			and _full_etd <= now()::date and (_del is null or _del > now()::date)
-			then 'red'
-		when _line_type = 'Enriched'
-			and coalesce(_arrival_date, _eta_wakeo, _pta) > _full_eta and (_del is null or _del > now()::date)
-			then 'red'
-		when _full_eta is not null and _arrival_date is null and _full_eta <= now()::date and (_del is null or _del > now()::date)
-			then 'red'
-		else null
-	end																																_transit_delay_expt	
 from (
 	-- ############################################################### PO enriched block ###############################################################
 	with _pre_calc as(
@@ -240,9 +187,6 @@ from (
 						,(select el ->> 'value'
 						      from jsonb_array_elements(feic._ship_response::jsonb -> 'custom_dates') el
 						      where el ->> 'name' = 'Cargo Ready Date Estimated')::date)												_crd
-					,(select el ->> 'value'
-				      from jsonb_array_elements(feic._ship_response::jsonb -> 'custom_dates') el
-				      where el ->> 'name' = 'Cargo Ready Date Estimated')::date														_est_cargo_ready_date
 				   	,(select el ->> 'value'
 				      from jsonb_array_elements(feic._ship_response::jsonb -> 'custom_dates') el
 				      where el ->> 'name' = 'Goods Cleared at Origin Customs')::date													_goods_cleared_origin
@@ -252,20 +196,24 @@ from (
 				   	,(feic._ship_response ->> 'pickup_date'::text)::date																_pickup_date
 					,(feic._ship_response ->> 'pickup_date'::text)::date																_cargo_ho
 		-- eta date group
-					,(feic._ship_response ->> 'eta_date'::text)::date																	_eta
+					,coalesce(
+						(feic._ship_response ->> 'pta_date'::text)::date
+						,(feic._ship_response ->> 'eta_date'::text)::date)															_eta
 					,coalesce(
 						(feic._ship_response ->> 'eta_wakeo_date'::text)::date
-						,(feic._ship_response ->> 'pta_date'::text)::date)															_revised_eta
+						,(feic._ship_response ->> 'eta_date'::text)::date)															_revised_eta
 					,(feic._ship_response ->> 'eta_wakeo_date'::text)::date															_eta_wakeo
 					,coalesce(
 						(feic._ship_response ->> 'eta_wakeo_date'::text)::date
 						,(feic._ship_response ->> 'pta_date'::text)::date
 						,(feic._ship_response ->> 'eta_date'::text)::date)															_full_eta
-					,(feic._ship_response ->> 'etd_date'::text)::date																	_etd
+					,coalesce(
+						(feic._ship_response ->> 'ptd_date'::text)::date
+						,(feic._ship_response ->> 'etd_date'::text)::date)															_etd
 		-- etd date group
 					,coalesce(
 						(feic._ship_response ->> 'etd_wakeo_date'::text)::date
-						,(feic._ship_response ->> 'ptd_date'::text)::date)															_revised_etd
+						,(feic._ship_response ->> 'etd_date'::text)::date)															_revised_etd
 					,(feic._ship_response ->> 'etd_wakeo_date'::text)::date															_etd_wakeo
 					,coalesce(
 						(feic._ship_response ->> 'etd_wakeo_date'::text)::date

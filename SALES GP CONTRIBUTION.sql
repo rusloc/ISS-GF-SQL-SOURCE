@@ -6,7 +6,6 @@ set dev.total_gp_view =
 $sql$ 
 
 
-
 select 
 	m.*
 -- window over RANGE is applied to mark all following shipments as new after old client breaks dormacy (8+ months)
@@ -109,7 +108,6 @@ from (
 						)
 					and "MAINACCOUNT" IN (30000, 30001, 30002, 30003, 30004, 30008, 30014, 30017, 31003, 40000, 40001, 40002, 40003, 40004, 40007, 41003, 41007, 41009) 
 			) m	
-
 
 
 $sql$

@@ -6,6 +6,8 @@ set dev.login_rls =
 $sql$
 
 
+select *
+from (
 -- GLOBAL level
 		select 
 			upper(u.column1)																	_email
@@ -27,8 +29,12 @@ union all
 			and upper(u."Email") in	(
 									upper('keith.lyners@iss-gf.com')
 									,upper('Andrea.Mandara@iss-gf.com')
+									,upper('Midhun.Vincent@iss-gf.com')
 									)
-			
+			) t 
+where 1=1
+order by 
+	_email
 					
 			
 $sql$

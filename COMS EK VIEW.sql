@@ -331,20 +331,24 @@ $sql$
 				   	,(feic._ship_response ->> 'pickup_date'::text)::date																_pickup_date
 					,(feic._ship_response ->> 'pickup_date'::text)::date																_cargo_ho
 		-- eta date group
-					,(feic._ship_response ->> 'eta_date'::text)::date																	_eta
+					,coalesce(
+						(feic._ship_response ->> 'pta_date'::text)::date
+						,(feic._ship_response ->> 'eta_date'::text)::date)															_eta
 					,coalesce(
 						(feic._ship_response ->> 'eta_wakeo_date'::text)::date
-						,(feic._ship_response ->> 'pta_date'::text)::date)															_revised_eta
+						,(feic._ship_response ->> 'eta_date'::text)::date)															_revised_eta
 					,(feic._ship_response ->> 'eta_wakeo_date'::text)::date															_eta_wakeo
 					,coalesce(
 						(feic._ship_response ->> 'eta_wakeo_date'::text)::date
 						,(feic._ship_response ->> 'pta_date'::text)::date
 						,(feic._ship_response ->> 'eta_date'::text)::date)															_full_eta
-					,(feic._ship_response ->> 'etd_date'::text)::date																	_etd
+					,coalesce(
+						(feic._ship_response ->> 'ptd_date'::text)::date
+						,(feic._ship_response ->> 'etd_date'::text)::date)															_etd
 		-- etd date group
 					,coalesce(
 						(feic._ship_response ->> 'etd_wakeo_date'::text)::date
-						,(feic._ship_response ->> 'ptd_date'::text)::date)															_revised_etd
+						,(feic._ship_response ->> 'etd_date'::text)::date)															_revised_etd
 					,(feic._ship_response ->> 'etd_wakeo_date'::text)::date															_etd_wakeo
 					,coalesce(
 						(feic._ship_response ->> 'etd_wakeo_date'::text)::date
