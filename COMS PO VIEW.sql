@@ -25,7 +25,7 @@
 
 -- set var: edit inline SQL source and run
 set dev.po_view = 
---$sql$ 
+$sql$ 
 
 select 
 	-- ############################################################### Wrapper (final) block ###############################################################
@@ -40,8 +40,67 @@ select
 			then m._current_edd_po
 		else null end 																												_final_expected_del_date
 /*
-	Exceptions block
-*/
+ * Split all AGG cases for clarity
+ */
+	,case 
+		when _line_type in ('Pending', 'Closed', 'Completed')
+			and count(*) filter(where _line_type = 'Enriched') over(partition by _po_no_ekporef, _line_no) = 0
+			then 'red'
+		when _line_type in ('Pending', 'Closed', 'Completed')
+			and count(*) filter(where _line_type = 'Enriched') over(partition by _po_no_ekporef, _line_no) > 0
+			and (_balance_outer_qnty > 0 or _balance_inner_qnty > 0)
+			then 'yellow'
+		when _line_type in ('Pending', 'Closed', 'Completed')
+			and count(*) filter(where _line_type = 'Enriched') over(partition by _po_no_ekporef, _line_no) > 0
+			and (_balance_outer_qnty = 0 or _balance_inner_qnty = 0)
+			then 'green'
+		else null
+	end																																_01_po_aknowledgment_expt_agg
+	,case 
+		when _line_type <> 'Enriched'
+			and 'red' = any( array_agg(_02_po_pickup_departure_expt) over(partition by _po_no_ekporef, _line_no))
+			then 'red'
+		when _line_type <> 'Enriched'
+			and 'yellow' = any( array_agg(_02_po_pickup_departure_expt) over(partition by _po_no_ekporef, _line_no))
+			then 'yellow'
+		when _line_type <> 'Enriched'
+			and 'green' = any( array_agg(_02_po_pickup_departure_expt) over(partition by _po_no_ekporef, _line_no))
+			then 'green'
+		when _line_type <> 'Enriched'
+			and 'dark green' = any( array_agg(_02_po_pickup_departure_expt) over(partition by _po_no_ekporef, _line_no))
+			then 'dark green'
+		else null
+	end																																_02_po_pickup_departure_expt_agg	
+	,case 
+-- any RED: if any of the PO lines has a red level of exception => RED
+		when _line_type <> 'Enriched'
+			and count(*) filter(where 1=1 and _line_type = 'Enriched') over(partition by _po_no_ekporef, _line_no) = 0
+				then 'red'
+		when _line_type <> 'Enriched'
+			and ('red' = any( array_agg(_01_po_aknowledgment_expt) over(partition by _po_no_ekporef, _line_no))
+			or 'red' = any( array_agg(_02_po_pickup_departure_expt) over(partition by _po_no_ekporef, _line_no))
+			or 'red' = any( array_agg(_03_po_transit_expt) over(partition by _po_no_ekporef, _line_no))
+			or 'red' = any( array_agg(_04_po_custom_clear_expt) over(partition by _po_no_ekporef, _line_no))
+			or 'red' = any( array_agg(_05_po_delivery_expt) over(partition by _po_no_ekporef, _line_no)) )
+			then 'red'
+-- any YELLOW: 
+		when _line_type <> 'Enriched'
+			and ('yellow' = any( array_agg(_01_po_aknowledgment_expt) over(partition by _po_no_ekporef, _line_no))
+			or 'yellow' = any( array_agg(_02_po_pickup_departure_expt) over(partition by _po_no_ekporef, _line_no))
+			or 'yellow' = any( array_agg(_03_po_transit_expt) over(partition by _po_no_ekporef, _line_no))
+			or 'yellow' = any( array_agg(_04_po_custom_clear_expt) over(partition by _po_no_ekporef, _line_no))
+			or 'yellow' = any( array_agg(_05_po_delivery_expt) over(partition by _po_no_ekporef, _line_no)) )
+			then 'yellow'
+		when _line_type <> 'Enriched'
+			and array['yellow', 'green', 'dark green'] @> array_agg(_01_po_aknowledgment_expt) over(partition by _po_no_ekporef, _line_no)
+			and array['yellow', 'green', 'dark green'] @> array_agg(_02_po_pickup_departure_expt) over(partition by _po_no_ekporef, _line_no)
+			and array['yellow', 'green', 'dark green'] @> array_agg(_03_po_transit_expt) over(partition by _po_no_ekporef, _line_no)
+			and array['yellow', 'green', 'dark green'] @> array_agg(_04_po_custom_clear_expt) over(partition by _po_no_ekporef, _line_no)
+			and array['yellow', 'green', 'dark green'] @> array_agg(_05_po_delivery_expt) over(partition by _po_no_ekporef, _line_no)
+			and (_balance_outer_qnty = 0 or _balance_inner_qnty = 0)
+				then 'yellow'
+		else null
+	end 																																_06_expt_status
 from (
 	-- ############################################################### PO enriched block ###############################################################
 	with _pre_calc as(
@@ -167,6 +226,10 @@ from (
 					    where item like '% x 40 ft%')* 2																				_teus
 					,car._name																										_carrier
 					,(feic._ship_response ->> 'arrival_date'::text)::date																_arrival_date
+					,(select min(item ->> 'date')
+						from jsonb_array_elements(feic._ship_response::jsonb -> 'status_updates') item
+						where item ->> 'status' ilike '%Actual Time of Arrival%'
+								or item ->> 'status' ilike '%Vessel arrival%')::date													_arrival_date_actual
 				    	,(feic._ship_response ->> 'delivery_date'::text)::date															_del
 					,(feic._ship_response ->> 'loading_date'::text)::date																_departure_date
 			-- >>>
@@ -1083,8 +1146,103 @@ from (
 		select 
 			m.* 
 			,_crd_2_etd + _etd_2_eta + _eta_2_del + _nbd_2_eta + _nbd_2_del																		_avg_lt
-			,_org_charges_aed + _frt_charges_aed + _dest_charges_aed																				_p2p_value_aed
-			,(_org_charges_aed + _frt_charges_aed + _dest_charges_aed) * 3.6																		_p2p_value_usd
+			/*
+				Exceptions block
+			*/
+			,case 
+				when coalesce(_etd, _eta) is not null then 'dark green'
+				else 'green'
+			end																																	_01_po_aknowledgment_expt
+			,case 
+				when (coalesce(_departure_date_actual, _etd_wakeo, _ptd, _etd) > (_crd + interval '5 days')
+					and coalesce(_departure_date_actual, _etd_wakeo, _ptd, _etd) <= (_crd + interval '7 days')
+					and coalesce(_departure_date_actual, _etd_wakeo, _ptd, _etd) > now()::date )
+					or 
+					(_crd is not null and coalesce(_departure_date_actual, _etd_wakeo, _ptd, _etd) is null
+					and now()::date > (_crd + interval '5 days')
+					and now()::date <= (_crd + interval '7 days'))
+						then 'yellow'
+				when (coalesce(_departure_date_actual, _etd_wakeo, _ptd, _etd) > (_crd + interval '7 days')
+					and coalesce(_departure_date_actual, _etd_wakeo, _ptd, _etd) > now()::date)
+					or 
+					(_crd is not null and coalesce(_departure_date_actual, _etd_wakeo, _ptd, _etd) is null
+					and now()::date > (_crd + interval '7 days'))
+						then 'red'
+				when coalesce(_departure_date_actual, _etd_wakeo, _ptd, _etd) <= (_crd + interval '5 days')
+					and coalesce(_departure_date_actual, _etd_wakeo, _ptd, _etd) > now()::date
+						then 'green'
+				when coalesce(_departure_date_actual, _etd_wakeo, _ptd, _etd) is not null
+					and coalesce(_departure_date_actual, _etd_wakeo, _ptd, _etd) <= now()::date
+						then 'dark green'
+				else null
+			end																																	_02_po_pickup_departure_expt
+			,case 
+				when coalesce(_pta,_eta) < coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date)
+					and ((coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date) - coalesce(_departure_date_actual, _etd_wakeo)) - (coalesce(_pta,_eta) - coalesce(_ptd, _etd))) > 10
+					and coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date, _pta, _eta) > now()::date
+					and _eta is not null
+						then 'red'
+				when coalesce(_ptd, _etd) < coalesce(_departure_date_actual, _etd_wakeo, _ptd, _etd)
+					and coalesce(_pta,_eta) < coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date)
+					and ((coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date) - coalesce(_departure_date_actual, _etd_wakeo)) - (coalesce(_pta,_eta) - coalesce(_ptd, _etd))) > 10
+					and coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date, _pta, _eta) > now()::date 
+					and _eta is not null
+						then 'red'
+				when coalesce(_pta,_eta) < coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date)
+					and ((coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date) - coalesce(_departure_date_actual, _etd_wakeo)) - (coalesce(_pta,_eta) - coalesce(_ptd, _etd))) <= 10
+					and coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date, _pta, _eta) > now()::date
+					and _eta is not null
+						then 'yellow'
+				when coalesce(_ptd, _etd) < coalesce(_departure_date_actual, _etd_wakeo, _ptd, _etd)
+					and coalesce(_pta,_eta) < coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date)
+					and ((coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date) - coalesce(_departure_date_actual, _etd_wakeo)) - (coalesce(_pta,_eta) - coalesce(_ptd, _etd))) <= 10
+					and coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date, _pta, _eta) > now()::date 
+					and _eta is not null
+						then 'yellow'
+				when coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date, _pta, _eta) > now()::date
+					and (coalesce(_pta,_eta) = coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date)
+						or coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date) is null)
+					and _eta is not null
+						then 'green'
+				when coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date) is not null
+					and coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date) <= now()::date
+						then 'dark green'
+				else null
+			end																																	_03_po_transit_expt
+			,case 
+				when coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date) is not null
+					and coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date) <= now()::date
+					and (_del is null or _del > now()::date )
+					and now()::date > (coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date) + interval '7 days')
+						then 'red'
+				when coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date) is not null
+					and coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date) <= now()::date
+					and (_del is null or _del > now()::date )
+					and now()::date > (coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date) + interval '3 days')
+						then 'yellow'
+				when (_goods_cleared_destination is not null and _goods_cleared_destination <= now()::Date)
+					or (_del is not null and _del <=now()::Date)
+						then 'dark green'
+				else null
+			end																																	_04_po_custom_clear_expt
+			,case 
+				when _current_edd_fo > _po_need_by_date
+					and (_del is null or _del > now()::date)
+					and (_current_edd_fo::date - _po_need_by_date::date) > 3
+					and _crd is not null
+						then 'red'
+				when _current_edd_fo > _po_need_by_date
+					and (_del is null or _del > now()::date)
+					and (_current_edd_fo::date - _po_need_by_date::date) between 0 and 3
+					and _crd is not null
+						then 'yelllow'
+				when _current_edd_fo <= _po_need_by_date
+					and (_del is null or _del > now()::date)
+					and _crd is not null
+						then 'green'
+				when _del is not null and _del <= now()::date
+					then 'dark green'
+			end																																	_05_po_delivery_expt
 		from _main m
 		union all
 	-- ############################################################### PO pending block ###############################################################
@@ -1200,13 +1358,13 @@ from (
 								,null::int																						_teus
 								,null::text																						_carrier
 								,null::date																						_arrival_date
+								,null::date 																						_arrival_date_actual
 								,null::date 																						_del
 								,null::date																						_departure_date
 								,null::date 																						_departure_date_actual
 								,null::date 																						_crd_actual
 								,null::date 																						_crd_estimated
 								,null::date 																						_crd
-								,null::date																						_est_cargo_ready_date
 								,null::date 																						_goods_cleared_origin
 								,null::date 																						_goods_cleared_destination
 								,null::date 																						_pickup_date
@@ -1316,8 +1474,11 @@ from (
 								,null::numeric 																					_nbd_2_eta
 								,null::numeric 																					_spo_invoice_val_aed
 								,null::numeric 																					_avg_lt
-								,null::numeric																					_p2p_value_aed
-								,null::numeric 																					_p2p_value_usd
+								,null::text																						_01_po_aknowledgment_expt
+								,null::text																						_02_po_pickup_departure_expt
+								,null::text																						_03_po_transit_expt
+								,null::text 																						_04_po_custom_clear_expt
+								,null::text 																						_05_po_delivery_expt
 							from (
 					-- wrapped into a subquery to imitate real PO line id (used later to identify row in a PBI report table)
 									select 
@@ -1357,4 +1518,9 @@ set _code = current_setting('dev.po_view')
 where 1=1
 	and _page = 'PO VIEW' 
 	and _report = 'COMS';
+
+
+
+
+
 
