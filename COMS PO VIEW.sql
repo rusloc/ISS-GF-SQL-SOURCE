@@ -30,6 +30,9 @@ $sql$
 select 
 	-- ############################################################### Wrapper (final) block ###############################################################
 	m.*
+	,case 
+		when _line_type = 'Enriched' then 'No'
+		else 'Master' end																											_master_line 
 /*
 	EDD dates: 
 		* First EDD (FO line) as is, current EDD (FO line) as is, Current EDD (PO line)
@@ -42,35 +45,35 @@ select
 /*
  * Split all AGG cases for clarity
  */
-	,case 
-		when _line_type in ('Pending', 'Closed', 'Completed')
-			and count(*) filter(where _line_type = 'Enriched') over(partition by _po_no_ekporef, _line_no) = 0
-			then 'red'
-		when _line_type in ('Pending', 'Closed', 'Completed')
-			and count(*) filter(where _line_type = 'Enriched') over(partition by _po_no_ekporef, _line_no) > 0
-			and (_balance_outer_qnty > 0 or _balance_inner_qnty > 0)
-			then 'yellow'
-		when _line_type in ('Pending', 'Closed', 'Completed')
-			and count(*) filter(where _line_type = 'Enriched') over(partition by _po_no_ekporef, _line_no) > 0
-			and (_balance_outer_qnty = 0 or _balance_inner_qnty = 0)
-			then 'green'
-		else null
-	end																																_01_po_aknowledgment_expt_agg
-	,case 
-		when _line_type <> 'Enriched'
-			and 'red' = any( array_agg(_02_po_pickup_departure_expt) over(partition by _po_no_ekporef, _line_no))
-			then 'red'
-		when _line_type <> 'Enriched'
-			and 'yellow' = any( array_agg(_02_po_pickup_departure_expt) over(partition by _po_no_ekporef, _line_no))
-			then 'yellow'
-		when _line_type <> 'Enriched'
-			and 'green' = any( array_agg(_02_po_pickup_departure_expt) over(partition by _po_no_ekporef, _line_no))
-			then 'green'
-		when _line_type <> 'Enriched'
-			and 'dark green' = any( array_agg(_02_po_pickup_departure_expt) over(partition by _po_no_ekporef, _line_no))
-			then 'dark green'
-		else null
-	end																																_02_po_pickup_departure_expt_agg	
+--	,case 
+--		when _line_type in ('Pending', 'Closed', 'Completed')
+--			and count(*) filter(where _line_type = 'Enriched') over(partition by _po_no_ekporef, _line_no) = 0
+--			then 'red'
+--		when _line_type in ('Pending', 'Closed', 'Completed')
+--			and count(*) filter(where _line_type = 'Enriched') over(partition by _po_no_ekporef, _line_no) > 0
+--			and (_balance_outer_qnty > 0 or _balance_inner_qnty > 0)
+--			then 'yellow'
+--		when _line_type in ('Pending', 'Closed', 'Completed')
+--			and count(*) filter(where _line_type = 'Enriched') over(partition by _po_no_ekporef, _line_no) > 0
+--			and (_balance_outer_qnty = 0 or _balance_inner_qnty = 0)
+--			then 'green'
+--		else null
+--	end																																_01_po_aknowledgment_expt_agg
+--	,case 
+--		when _line_type <> 'Enriched'
+--			and 'red' = any( array_agg(_02_po_pickup_departure_expt) over(partition by _po_no_ekporef, _line_no))
+--			then 'red'
+--		when _line_type <> 'Enriched'
+--			and 'yellow' = any( array_agg(_02_po_pickup_departure_expt) over(partition by _po_no_ekporef, _line_no))
+--			then 'yellow'
+--		when _line_type <> 'Enriched'
+--			and 'green' = any( array_agg(_02_po_pickup_departure_expt) over(partition by _po_no_ekporef, _line_no))
+--			then 'green'
+--		when _line_type <> 'Enriched'
+--			and 'dark green' = any( array_agg(_02_po_pickup_departure_expt) over(partition by _po_no_ekporef, _line_no))
+--			then 'dark green'
+--		else null
+--	end																																_02_po_pickup_departure_expt_agg	
 	,case 
 -- any RED: if any of the PO lines has a red level of exception => RED
 		when _line_type <> 'Enriched'
@@ -82,7 +85,7 @@ select
 			or 'red' = any( array_agg(_03_po_transit_expt) over(partition by _po_no_ekporef, _line_no))
 			or 'red' = any( array_agg(_04_po_custom_clear_expt) over(partition by _po_no_ekporef, _line_no))
 			or 'red' = any( array_agg(_05_po_delivery_expt) over(partition by _po_no_ekporef, _line_no)) )
-			then 'red'
+				then 'red'
 -- any YELLOW: 
 		when _line_type <> 'Enriched'
 			and ('yellow' = any( array_agg(_01_po_aknowledgment_expt) over(partition by _po_no_ekporef, _line_no))
@@ -92,15 +95,59 @@ select
 			or 'yellow' = any( array_agg(_05_po_delivery_expt) over(partition by _po_no_ekporef, _line_no)) )
 			then 'yellow'
 		when _line_type <> 'Enriched'
-			and array['yellow', 'green', 'dark green'] @> array_agg(_01_po_aknowledgment_expt) over(partition by _po_no_ekporef, _line_no)
-			and array['yellow', 'green', 'dark green'] @> array_agg(_02_po_pickup_departure_expt) over(partition by _po_no_ekporef, _line_no)
-			and array['yellow', 'green', 'dark green'] @> array_agg(_03_po_transit_expt) over(partition by _po_no_ekporef, _line_no)
-			and array['yellow', 'green', 'dark green'] @> array_agg(_04_po_custom_clear_expt) over(partition by _po_no_ekporef, _line_no)
-			and array['yellow', 'green', 'dark green'] @> array_agg(_05_po_delivery_expt) over(partition by _po_no_ekporef, _line_no)
+			and (
+				array['yellow'] <@ array_agg(_01_po_aknowledgment_expt) over(partition by _po_no_ekporef, _line_no)
+				or array['yellow'] <@ array_agg(_02_po_pickup_departure_expt) over(partition by _po_no_ekporef, _line_no)
+				or array['yellow'] <@ array_agg(_03_po_transit_expt) over(partition by _po_no_ekporef, _line_no)
+				or array['yellow'] <@ array_agg(_04_po_custom_clear_expt) over(partition by _po_no_ekporef, _line_no)
+				or array['yellow'] <@ array_agg(_05_po_delivery_expt) over(partition by _po_no_ekporef, _line_no)
+				)
+			and (
+				'red' != any( array_agg(_01_po_aknowledgment_expt) over(partition by _po_no_ekporef, _line_no))
+				and 'red' != any( array_agg(_02_po_pickup_departure_expt) over(partition by _po_no_ekporef, _line_no))
+				and 'red' != any( array_agg(_03_po_transit_expt) over(partition by _po_no_ekporef, _line_no))
+				and 'red' != any( array_agg(_04_po_custom_clear_expt) over(partition by _po_no_ekporef, _line_no))
+				and 'red' != any( array_agg(_05_po_delivery_expt) over(partition by _po_no_ekporef, _line_no))
+				)
 			and (_balance_outer_qnty = 0 or _balance_inner_qnty = 0)
 				then 'yellow'
+		when _line_type <> 'Enriched'
+			and array['green'] <@ array_agg(_01_po_aknowledgment_expt) over(partition by _po_no_ekporef, _line_no)
+			and array['green'] <@ array_agg(_02_po_pickup_departure_expt) over(partition by _po_no_ekporef, _line_no)
+			and array['green'] <@ array_agg(_03_po_transit_expt) over(partition by _po_no_ekporef, _line_no)
+			and array['green'] <@ array_agg(_04_po_custom_clear_expt) over(partition by _po_no_ekporef, _line_no)
+			and array['green'] <@ array_agg(_05_po_delivery_expt) over(partition by _po_no_ekporef, _line_no)
+			and (_balance_outer_qnty > 0 or _balance_inner_qnty > 0)
+				then 'yellow'
+		when _line_type <> 'Enriched'
+			and array['green'] <@ array_agg(_01_po_aknowledgment_expt) over(partition by _po_no_ekporef, _line_no)
+			and array['green'] <@ array_agg(_02_po_pickup_departure_expt) over(partition by _po_no_ekporef, _line_no)
+			and array['green'] <@ array_agg(_03_po_transit_expt) over(partition by _po_no_ekporef, _line_no)
+			and array['green'] <@ array_agg(_04_po_custom_clear_expt) over(partition by _po_no_ekporef, _line_no)
+			and array['green'] <@ array_agg(_05_po_delivery_expt) over(partition by _po_no_ekporef, _line_no)
+			and (_balance_outer_qnty = 0 or _balance_inner_qnty = 0)
+				then 'green'
+		when _line_type <> 'Enriched'
+			and array['dark green'] <@ array_agg(_01_po_aknowledgment_expt) over(partition by _po_no_ekporef, _line_no)
+			and array['dark green'] <@ array_agg(_02_po_pickup_departure_expt) over(partition by _po_no_ekporef, _line_no)
+			and array['dark green'] <@ array_agg(_03_po_transit_expt) over(partition by _po_no_ekporef, _line_no)
+			and array['dark green'] <@ array_agg(_04_po_custom_clear_expt) over(partition by _po_no_ekporef, _line_no)
+			and array['dark green'] <@ array_agg(_05_po_delivery_expt) over(partition by _po_no_ekporef, _line_no)
+			and (_balance_outer_qnty = 0 or _balance_inner_qnty = 0)
+				then 'dark green'
 		else null
 	end 																																_06_expt_status
+	,case
+		when _line_type <> 'Enriched'
+			and array['dark green'] <@ array_agg(_01_po_aknowledgment_expt) over(partition by _po_no_ekporef, _line_no)
+			and array['dark green'] <@ array_agg(_02_po_pickup_departure_expt) over(partition by _po_no_ekporef, _line_no)
+			and array['dark green'] <@ array_agg(_03_po_transit_expt) over(partition by _po_no_ekporef, _line_no)
+			and array['dark green'] <@ array_agg(_04_po_custom_clear_expt) over(partition by _po_no_ekporef, _line_no)
+			and array['dark green'] <@ array_agg(_05_po_delivery_expt) over(partition by _po_no_ekporef, _line_no)
+			and (_balance_outer_qnty = 0 or _balance_inner_qnty = 0)
+				then 'dark green'
+		else null
+	end 																																_check
 from (
 	-- ############################################################### PO enriched block ###############################################################
 	with _pre_calc as(
@@ -313,12 +360,12 @@ from (
 						,(feic._ship_response ->> 'eta_date'::text)::date	))
 						over(partition by fu.id) + interval '3 days'																	_first_edd_fo
 					,max(coalesce(
+						(feic._ship_response ->> 'eta_wakeo_date'::text)::date
 			-- ATA must be less then today
-						(case 
+						,(case 
 							when (feic._ship_response ->> 'arrival_date'::text)::date	 < now()::date
 								then (feic._ship_response ->> 'arrival_date'::text)::date
 							else null end)
-						,(feic._ship_response ->> 'eta_wakeo_date'::text)::date
 						,(feic._ship_response ->> 'eta_date'::text)::date	))
 						over(partition by fu.id) + interval '3 days'																	_current_edd_fo
 -- other dates
@@ -712,8 +759,8 @@ from (
 				left join (
 							select 
 								*
-								,row_number() over(partition by pol.po_no order by pol.id)											_line_id
-							from portal."PurchaseOrderLine" pol
+								,row_number() over(partition by p.po_no order by p.id)											_line_id
+							from portal."PurchaseOrderLine" p
 								) pol
 					on pol.id = pofu.purchase_order_id 
 				left join portal.freight_unit fu 
@@ -1180,28 +1227,33 @@ from (
 				when coalesce(_pta,_eta) < coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date)
 					and ((coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date) - coalesce(_departure_date_actual, _etd_wakeo)) - (coalesce(_pta,_eta) - coalesce(_ptd, _etd))) > 10
 					and coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date, _pta, _eta) > now()::date
+					and coalesce(_departure_date_actual, _etd_wakeo, _ptd, _etd) <= now()::date
 					and _eta is not null
 						then 'red'
 				when coalesce(_ptd, _etd) < coalesce(_departure_date_actual, _etd_wakeo, _ptd, _etd)
 					and coalesce(_pta,_eta) < coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date)
 					and ((coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date) - coalesce(_departure_date_actual, _etd_wakeo)) - (coalesce(_pta,_eta) - coalesce(_ptd, _etd))) > 10
 					and coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date, _pta, _eta) > now()::date 
+					and coalesce(_departure_date_actual, _etd_wakeo, _ptd, _etd) <= now()::date
 					and _eta is not null
 						then 'red'
 				when coalesce(_pta,_eta) < coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date)
 					and ((coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date) - coalesce(_departure_date_actual, _etd_wakeo)) - (coalesce(_pta,_eta) - coalesce(_ptd, _etd))) <= 10
 					and coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date, _pta, _eta) > now()::date
+					and coalesce(_departure_date_actual, _etd_wakeo, _ptd, _etd) <= now()::date
 					and _eta is not null
 						then 'yellow'
 				when coalesce(_ptd, _etd) < coalesce(_departure_date_actual, _etd_wakeo, _ptd, _etd)
 					and coalesce(_pta,_eta) < coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date)
 					and ((coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date) - coalesce(_departure_date_actual, _etd_wakeo)) - (coalesce(_pta,_eta) - coalesce(_ptd, _etd))) <= 10
 					and coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date, _pta, _eta) > now()::date 
+					and coalesce(_departure_date_actual, _etd_wakeo, _ptd, _etd) <= now()::date
 					and _eta is not null
 						then 'yellow'
 				when coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date, _pta, _eta) > now()::date
 					and (coalesce(_pta,_eta) = coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date)
 						or coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date) is null)
+					and coalesce(_departure_date_actual, _etd_wakeo, _ptd, _etd) <= now()::date
 					and _eta is not null
 						then 'green'
 				when coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date) is not null
@@ -1214,31 +1266,40 @@ from (
 					and coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date) <= now()::date
 					and (_del is null or _del > now()::date )
 					and now()::date > (coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date) + interval '7 days')
+					and (_goods_cleared_destination is null or _goods_cleared_destination > now()::Date)
 						then 'red'
 				when coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date) is not null
 					and coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date) <= now()::date
 					and (_del is null or _del > now()::date )
 					and now()::date > (coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date) + interval '3 days')
+					and now()::date <= (coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date) + interval '7 days')
+					and (_goods_cleared_destination is null or _goods_cleared_destination > now()::Date)
 						then 'yellow'
 				when (_goods_cleared_destination is not null and _goods_cleared_destination <= now()::Date)
 					or (_del is not null and _del <=now()::Date)
 						then 'dark green'
+				when coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date) is not null
+					and coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date) <= now()::date
+					and (_goods_cleared_destination is null or _goods_cleared_destination > now()::Date)
+					and (_del is null or _del > now()::date )
+					and now()::date <= (coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date) + interval '3 days')
+						then 'green'
 				else null
 			end																																	_04_po_custom_clear_expt
 			,case 
 				when _current_edd_fo > _po_need_by_date
 					and (_del is null or _del > now()::date)
 					and (_current_edd_fo::date - _po_need_by_date::date) > 3
-					and _crd is not null
+					and coalesce(_eta_wakeo, _arrival_date, _eta)  is not null
 						then 'red'
 				when _current_edd_fo > _po_need_by_date
 					and (_del is null or _del > now()::date)
 					and (_current_edd_fo::date - _po_need_by_date::date) between 0 and 3
-					and _crd is not null
+					and coalesce(_eta_wakeo, _arrival_date, _eta) is not null
 						then 'yelllow'
 				when _current_edd_fo <= _po_need_by_date
 					and (_del is null or _del > now()::date)
-					and _crd is not null
+					and coalesce(_eta_wakeo, _arrival_date, _eta) is not null
 						then 'green'
 				when _del is not null and _del <= now()::date
 					then 'dark green'

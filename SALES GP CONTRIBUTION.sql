@@ -70,6 +70,8 @@ from (
 									,upper(replace(replace(trim(s."Account Manager") ,'  ',''), ' ','_'))										_acc_manager
 									,lag(s."Operational Date"::date) over _win																_prev_ship_date
 								from public.analytical__shipments_pbi s 
+								where 1=1
+--									and "Serial No" = 'DXBSI26000269'
 					-- window is applied to define NEW/OLD/REGAINED shipments within client-acc.manager
 								window _win as (
 												partition by 
@@ -103,11 +105,13 @@ from (
 					and (
 						upper(trim(replace(replace(s._sales_user,'  ',''), ' ','_')))	
 						in (select u._sales_user from _users u)
-						or upper(trim(replace(replace(acm._new_manager,'  ',''), ' ','_')))	
+						or upper(trim(replace(replace(coalesce(acm._new_manager,s._acc_manager),'  ',''), ' ','_')))	
 						in (select u._sales_user from _users u)
 						)
 					and "MAINACCOUNT" IN (30000, 30001, 30002, 30003, 30004, 30008, 30014, 30017, 31003, 40000, 40001, 40002, 40003, 40004, 40007, 41003, 41007, 41009) 
 			) m	
+	where 1=1
+--		and _ship_serial = 'DXBSI26000269'
 
 
 $sql$
@@ -126,5 +130,7 @@ where _page = 'TOTAL GP' and _report = 'SALES GP';
 
 
 -- ########################################################################################################################################################
+
+
 
 
