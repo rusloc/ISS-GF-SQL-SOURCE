@@ -41,7 +41,7 @@ $sql$
 					,p.po_desc 																						_commodity
 					,f.serial_no																						_iss_ref
 					,case 
-						when feic._ship_response ->> 'serial_no' is null then split_part(fe.service,'_',1)
+						when feic._ship_response ->> 'serial_no' is null then fe.service
 						else (feic._ship_response ->> 'service')::text end											_mode
 					,fu.purchase_order_company_id																	_client_id
 				    ,poc."company_name"																				_client

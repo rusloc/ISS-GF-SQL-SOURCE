@@ -42,112 +42,89 @@ select
 		when _line_type in ('Pending', 'Closed', 'Completed') and _original_po_qty = _shipped
 			then m._current_edd_po
 		else null end 																												_final_expected_del_date
-/*
- * Split all AGG cases for clarity
- */
---	,case 
---		when _line_type in ('Pending', 'Closed', 'Completed')
---			and count(*) filter(where _line_type = 'Enriched') over(partition by _po_no_ekporef, _line_no) = 0
---			then 'red'
---		when _line_type in ('Pending', 'Closed', 'Completed')
---			and count(*) filter(where _line_type = 'Enriched') over(partition by _po_no_ekporef, _line_no) > 0
---			and (_balance_outer_qnty > 0 or _balance_inner_qnty > 0)
---			then 'yellow'
---		when _line_type in ('Pending', 'Closed', 'Completed')
---			and count(*) filter(where _line_type = 'Enriched') over(partition by _po_no_ekporef, _line_no) > 0
---			and (_balance_outer_qnty = 0 or _balance_inner_qnty = 0)
---			then 'green'
---		else null
---	end																																_01_po_aknowledgment_expt_agg
---	,case 
---		when _line_type <> 'Enriched'
---			and 'red' = any( array_agg(_02_po_pickup_departure_expt) over(partition by _po_no_ekporef, _line_no))
---			then 'red'
---		when _line_type <> 'Enriched'
---			and 'yellow' = any( array_agg(_02_po_pickup_departure_expt) over(partition by _po_no_ekporef, _line_no))
---			then 'yellow'
---		when _line_type <> 'Enriched'
---			and 'green' = any( array_agg(_02_po_pickup_departure_expt) over(partition by _po_no_ekporef, _line_no))
---			then 'green'
---		when _line_type <> 'Enriched'
---			and 'dark green' = any( array_agg(_02_po_pickup_departure_expt) over(partition by _po_no_ekporef, _line_no))
---			then 'dark green'
---		else null
---	end																																_02_po_pickup_departure_expt_agg	
 	,case 
--- any RED: if any of the PO lines has a red level of exception => RED
+-- RED condition
 		when _line_type <> 'Enriched'
 			and count(*) filter(where 1=1 and _line_type = 'Enriched') over(partition by _po_no_ekporef, _line_no) = 0
 				then 'red'
 		when _line_type <> 'Enriched'
-			and ('red' = any( array_agg(_01_po_aknowledgment_expt) over(partition by _po_no_ekporef, _line_no))
+			and coalesce(
+			('red' = any( array_agg(_01_po_aknowledgment_expt) over(partition by _po_no_ekporef, _line_no))
 			or 'red' = any( array_agg(_02_po_pickup_departure_expt) over(partition by _po_no_ekporef, _line_no))
 			or 'red' = any( array_agg(_03_po_transit_expt) over(partition by _po_no_ekporef, _line_no))
 			or 'red' = any( array_agg(_04_po_custom_clear_expt) over(partition by _po_no_ekporef, _line_no))
 			or 'red' = any( array_agg(_05_po_delivery_expt) over(partition by _po_no_ekporef, _line_no)) )
+			,false)
 				then 'red'
--- any YELLOW: 
+-- YELLOW condition
+	-- if any YELLOW and none is RED -> YELLOW
 		when _line_type <> 'Enriched'
-			and ('yellow' = any( array_agg(_01_po_aknowledgment_expt) over(partition by _po_no_ekporef, _line_no))
+			and coalesce(
+			('yellow' = any( array_agg(_01_po_aknowledgment_expt) over(partition by _po_no_ekporef, _line_no))
 			or 'yellow' = any( array_agg(_02_po_pickup_departure_expt) over(partition by _po_no_ekporef, _line_no))
 			or 'yellow' = any( array_agg(_03_po_transit_expt) over(partition by _po_no_ekporef, _line_no))
 			or 'yellow' = any( array_agg(_04_po_custom_clear_expt) over(partition by _po_no_ekporef, _line_no))
 			or 'yellow' = any( array_agg(_05_po_delivery_expt) over(partition by _po_no_ekporef, _line_no)) )
-			then 'yellow'
-		when _line_type <> 'Enriched'
-			and (
-				array['yellow'] <@ array_agg(_01_po_aknowledgment_expt) over(partition by _po_no_ekporef, _line_no)
-				or array['yellow'] <@ array_agg(_02_po_pickup_departure_expt) over(partition by _po_no_ekporef, _line_no)
-				or array['yellow'] <@ array_agg(_03_po_transit_expt) over(partition by _po_no_ekporef, _line_no)
-				or array['yellow'] <@ array_agg(_04_po_custom_clear_expt) over(partition by _po_no_ekporef, _line_no)
-				or array['yellow'] <@ array_agg(_05_po_delivery_expt) over(partition by _po_no_ekporef, _line_no)
-				)
-			and (
-				'red' != any( array_agg(_01_po_aknowledgment_expt) over(partition by _po_no_ekporef, _line_no))
-				and 'red' != any( array_agg(_02_po_pickup_departure_expt) over(partition by _po_no_ekporef, _line_no))
-				and 'red' != any( array_agg(_03_po_transit_expt) over(partition by _po_no_ekporef, _line_no))
-				and 'red' != any( array_agg(_04_po_custom_clear_expt) over(partition by _po_no_ekporef, _line_no))
-				and 'red' != any( array_agg(_05_po_delivery_expt) over(partition by _po_no_ekporef, _line_no))
-				)
-			and (_balance_outer_qnty = 0 or _balance_inner_qnty = 0)
+			,false)
+			and (sum(_balance_outer_qnty) filter(where _line_type <> 'Enriched') over(partition by _po_no_ekporef, _line_no) ) > 0
 				then 'yellow'
 		when _line_type <> 'Enriched'
-			and array['green'] <@ array_agg(_01_po_aknowledgment_expt) over(partition by _po_no_ekporef, _line_no)
-			and array['green'] <@ array_agg(_02_po_pickup_departure_expt) over(partition by _po_no_ekporef, _line_no)
-			and array['green'] <@ array_agg(_03_po_transit_expt) over(partition by _po_no_ekporef, _line_no)
-			and array['green'] <@ array_agg(_04_po_custom_clear_expt) over(partition by _po_no_ekporef, _line_no)
-			and array['green'] <@ array_agg(_05_po_delivery_expt) over(partition by _po_no_ekporef, _line_no)
-			and (_balance_outer_qnty > 0 or _balance_inner_qnty > 0)
+			and coalesce(
+			('yellow' != any( array_agg(_01_po_aknowledgment_expt) over(partition by _po_no_ekporef, _line_no))
+			or 'yellow' != any( array_agg(_02_po_pickup_departure_expt) over(partition by _po_no_ekporef, _line_no))
+			or 'yellow' != any( array_agg(_03_po_transit_expt) over(partition by _po_no_ekporef, _line_no))
+			or 'yellow' != any( array_agg(_04_po_custom_clear_expt) over(partition by _po_no_ekporef, _line_no))
+			or 'yellow' != any( array_agg(_05_po_delivery_expt) over(partition by _po_no_ekporef, _line_no)) )
+			,false)
+			and (sum(_balance_outer_qnty) filter(where _line_type <> 'Enriched') over(partition by _po_no_ekporef, _line_no) ) > 0
 				then 'yellow'
+-- GREEN condition
 		when _line_type <> 'Enriched'
-			and array['green'] <@ array_agg(_01_po_aknowledgment_expt) over(partition by _po_no_ekporef, _line_no)
-			and array['green'] <@ array_agg(_02_po_pickup_departure_expt) over(partition by _po_no_ekporef, _line_no)
-			and array['green'] <@ array_agg(_03_po_transit_expt) over(partition by _po_no_ekporef, _line_no)
-			and array['green'] <@ array_agg(_04_po_custom_clear_expt) over(partition by _po_no_ekporef, _line_no)
-			and array['green'] <@ array_agg(_05_po_delivery_expt) over(partition by _po_no_ekporef, _line_no)
-			and (_balance_outer_qnty = 0 or _balance_inner_qnty = 0)
+			and coalesce(
+			('green' = any( array_agg(_01_po_aknowledgment_expt) over(partition by _po_no_ekporef, _line_no))
+			or 'green' = any( array_agg(_02_po_pickup_departure_expt) over(partition by _po_no_ekporef, _line_no))
+			or 'green' = any( array_agg(_03_po_transit_expt) over(partition by _po_no_ekporef, _line_no))
+			or 'green' = any( array_agg(_04_po_custom_clear_expt) over(partition by _po_no_ekporef, _line_no))
+			or 'green' = any( array_agg(_05_po_delivery_expt) over(partition by _po_no_ekporef, _line_no)) )
+			,false)
+			and (sum(_balance_outer_qnty) filter(where _line_type <> 'Enriched') over(partition by _po_no_ekporef, _line_no) ) = 0
 				then 'green'
+-- DARK GREEN condition
 		when _line_type <> 'Enriched'
 			and array['dark green'] <@ array_agg(_01_po_aknowledgment_expt) over(partition by _po_no_ekporef, _line_no)
 			and array['dark green'] <@ array_agg(_02_po_pickup_departure_expt) over(partition by _po_no_ekporef, _line_no)
 			and array['dark green'] <@ array_agg(_03_po_transit_expt) over(partition by _po_no_ekporef, _line_no)
 			and array['dark green'] <@ array_agg(_04_po_custom_clear_expt) over(partition by _po_no_ekporef, _line_no)
 			and array['dark green'] <@ array_agg(_05_po_delivery_expt) over(partition by _po_no_ekporef, _line_no)
-			and (_balance_outer_qnty = 0 or _balance_inner_qnty = 0)
+			and (sum(_balance_outer_qnty) filter(where _line_type <> 'Enriched') over(partition by _po_no_ekporef, _line_no) ) = 0
 				then 'dark green'
 		else null
 	end 																																_06_expt_status
-	,case
-		when _line_type <> 'Enriched'
-			and array['dark green'] <@ array_agg(_01_po_aknowledgment_expt) over(partition by _po_no_ekporef, _line_no)
-			and array['dark green'] <@ array_agg(_02_po_pickup_departure_expt) over(partition by _po_no_ekporef, _line_no)
-			and array['dark green'] <@ array_agg(_03_po_transit_expt) over(partition by _po_no_ekporef, _line_no)
-			and array['dark green'] <@ array_agg(_04_po_custom_clear_expt) over(partition by _po_no_ekporef, _line_no)
-			and array['dark green'] <@ array_agg(_05_po_delivery_expt) over(partition by _po_no_ekporef, _line_no)
-			and (_balance_outer_qnty = 0 or _balance_inner_qnty = 0)
-				then 'dark green'
-		else null
-	end 																																_check
+-- ############################################### EXCEPTION CHECK ####################################################
+--	,case
+--		when _line_type <> 'Enriched'
+--			and array['dark green'] <@ array_agg(_01_po_aknowledgment_expt) over(partition by _po_no_ekporef, _line_no)
+--			and array['dark green'] <@ array_agg(_02_po_pickup_departure_expt) over(partition by _po_no_ekporef, _line_no)
+--			and array['dark green'] <@ array_agg(_03_po_transit_expt) over(partition by _po_no_ekporef, _line_no)
+--			and array['dark green'] <@ array_agg(_04_po_custom_clear_expt) over(partition by _po_no_ekporef, _line_no)
+--			and array['dark green'] <@ array_agg(_05_po_delivery_expt) over(partition by _po_no_ekporef, _line_no)
+--			and (sum(_balance_outer_qnty) over(partition by _po_no_ekporef, _line_no) = 0)
+--				then 'dark green'
+--		else null
+--	end 																																_check
+--	,array_agg(_01_po_aknowledgment_expt) over(partition by _po_no_ekporef, _line_no)													_null_check_01
+--	,array_agg(_02_po_pickup_departure_expt) over(partition by _po_no_ekporef, _line_no)												_null_check_02
+--	,array_agg(_03_po_transit_expt) over(partition by _po_no_ekporef, _line_no)														_null_check_03
+--	,array_agg(_04_po_custom_clear_expt) over(partition by _po_no_ekporef, _line_no)													_null_check_04
+--	,array_agg(_05_po_delivery_expt) over(partition by _po_no_ekporef, _line_no)														_null_check_05
+--	,coalesce(
+--			('green' = any( array_agg(_01_po_aknowledgment_expt) over(partition by _po_no_ekporef, _line_no))
+--			or 'green' = any( array_agg(_02_po_pickup_departure_expt) over(partition by _po_no_ekporef, _line_no))
+--			or 'green' = any( array_agg(_03_po_transit_expt) over(partition by _po_no_ekporef, _line_no))
+--			or 'green' = any( array_agg(_04_po_custom_clear_expt) over(partition by _po_no_ekporef, _line_no))
+--			or 'green' = any( array_agg(_05_po_delivery_expt) over(partition by _po_no_ekporef, _line_no)) )
+--			,false)
+--			and (sum(_balance_outer_qnty) filter(where _line_type <> 'Enriched') over(partition by _po_no_ekporef, _line_no) ) > 0											_07_check
 from (
 	-- ############################################################### PO enriched block ###############################################################
 	with _pre_calc as(
@@ -209,7 +186,7 @@ from (
 					,pol.current_po_promised_dt																						_po_need_by_date
 		-- >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> FO LINES
 					,case 
-						when feic._ship_response ->> 'serial_no' is null then split_part(fe.service,'_',1)
+						when feic._ship_response ->> 'serial_no' is null then fe.service
 						else (feic._ship_response ->> 'service')::text end															_mode
 					,fe.routed_by																									_routed_by
 					,fe.shipment_remarks																								_ship_remarks_updates
@@ -1564,7 +1541,7 @@ from (
 --					and rem._qnty_shipped_remaning > 0 
 	) m 
 where 1=1
---	and _po_no_ekporef = '424000447-24'
+--	and _po_no_ekporef = '624000447-1'
 	
 	
 
