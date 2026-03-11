@@ -286,6 +286,7 @@ from (
 					,coalesce(
 						(feic._ship_response ->> 'pta_date'::text)::date
 						,(feic._ship_response ->> 'eta_date'::text)::date)															_eta
+					,(feic._ship_response ->> 'eta_date'::text)::date																	_eta_simple
 					,coalesce(
 						(feic._ship_response ->> 'eta_wakeo_date'::text)::date
 						,(feic._ship_response ->> 'eta_date'::text)::date)															_revised_eta
@@ -294,10 +295,11 @@ from (
 						(feic._ship_response ->> 'eta_wakeo_date'::text)::date
 						,(feic._ship_response ->> 'pta_date'::text)::date
 						,(feic._ship_response ->> 'eta_date'::text)::date)															_full_eta
+		-- etd date group
 					,coalesce(
 						(feic._ship_response ->> 'ptd_date'::text)::date
 						,(feic._ship_response ->> 'etd_date'::text)::date)															_etd
-		-- etd date group
+					,(feic._ship_response ->> 'etd_date'::text)::date																	_etd_simple
 					,coalesce(
 						(feic._ship_response ->> 'etd_wakeo_date'::text)::date
 						,(feic._ship_response ->> 'etd_date'::text)::date)															_revised_etd
@@ -315,7 +317,7 @@ from (
 					> _current_edd_fo
 				2. FO level
 					> _first_edd_fo
-					> _current_edd_fo
+					> _current_edd_fo (moved to _calc block)
 */
 -- PO LEVEL EDD DATES
 					,min(coalesce(
@@ -336,15 +338,6 @@ from (
 						(feic._ship_response ->> 'pta_date'::text)::date
 						,(feic._ship_response ->> 'eta_date'::text)::date	))
 						over(partition by fu.id) + interval '3 days'																	_first_edd_fo
-					,max(coalesce(
-						(feic._ship_response ->> 'eta_wakeo_date'::text)::date
-			-- ATA must be less then today
-						,(case 
-							when (feic._ship_response ->> 'arrival_date'::text)::date	 < now()::date
-								then (feic._ship_response ->> 'arrival_date'::text)::date
-							else null end)
-						,(feic._ship_response ->> 'eta_date'::text)::date	))
-						over(partition by fu.id) + interval '3 days'																	_current_edd_fo
 -- other dates
 					,(select el ->> 'value'
 				      from jsonb_array_elements(feic._ship_response::jsonb -> 'custom_dates') el
@@ -936,6 +929,14 @@ from (
 		,_calc as (
 						select 
 							y.*
+							,case
+								when max(coalesce(_eta_wakeo, _eta_simple))
+										over(partition by _fo_id) + interval '3 days'	<= now()::date
+									and _del is null
+										then now()::date + interval '1 day'
+								else max(coalesce(_eta_wakeo, _eta_simple))
+										over(partition by _fo_id) + interval '3 days'	
+								end 																												_current_edd_fo
 							,case 
 									when (_days_order_placement_lt 
 										+ _days_supplier_production_lt
@@ -1174,113 +1175,83 @@ from (
 				Exceptions block
 			*/
 			,case 
-				when coalesce(_etd, _eta) is not null then 'dark green'
-				else 'green'
-			end																																	_01_po_aknowledgment_expt
+				when _etd is not null and _eta is not null and _crd is not null then 'dark green'
+				else 'green' end																													_01_po_aknowledgment_expt
 			,case 
-				when (coalesce(_departure_date_actual, _etd_wakeo, _ptd, _etd) > (_crd + interval '5 days')
-					and coalesce(_departure_date_actual, _etd_wakeo, _ptd, _etd) <= (_crd + interval '7 days')
-					and coalesce(_departure_date_actual, _etd_wakeo, _ptd, _etd) > now()::date )
-					or 
-					(_crd is not null and coalesce(_departure_date_actual, _etd_wakeo, _ptd, _etd) is null
-					and now()::date > (_crd + interval '5 days')
-					and now()::date <= (_crd + interval '7 days'))
-						then 'yellow'
-				when (coalesce(_departure_date_actual, _etd_wakeo, _ptd, _etd) > (_crd + interval '7 days')
-					and coalesce(_departure_date_actual, _etd_wakeo, _ptd, _etd) > now()::date)
-					or 
-					(_crd is not null and coalesce(_departure_date_actual, _etd_wakeo, _ptd, _etd) is null
-					and now()::date > (_crd + interval '7 days'))
-						then 'red'
-				when coalesce(_departure_date_actual, _etd_wakeo, _ptd, _etd) <= (_crd + interval '5 days')
-					and coalesce(_departure_date_actual, _etd_wakeo, _ptd, _etd) > now()::date
-						then 'green'
-				when coalesce(_departure_date_actual, _etd_wakeo, _ptd, _etd) is not null
-					and coalesce(_departure_date_actual, _etd_wakeo, _ptd, _etd) <= now()::date
+				when coalesce(_departure_date_actual, _departure_date) is not null
+					and coalesce(_departure_date_actual, _departure_date) <= now()::date
 						then 'dark green'
-				else null
-			end																																	_02_po_pickup_departure_expt
+				when coalesce(_etd_wakeo, _ptd, _etd) <= (_crd + interval '5 days')
+						then 'green'
+				when coalesce(_etd_wakeo, _ptd, _etd) > (_crd + interval '5 days')
+					and coalesce(_etd_wakeo, _ptd, _etd) <= (_crd + interval '7 days')
+						then 'yellow'
+				when coalesce(_etd_wakeo, _ptd, _etd) > (_crd + interval '7 days')
+						then 'red'				
+				else null end																													_02_po_pickup_departure_expt
 			,case 
-				when coalesce(_pta,_eta) < coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date)
-					and ((coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date) - coalesce(_departure_date_actual, _etd_wakeo)) - (coalesce(_pta,_eta) - coalesce(_ptd, _etd))) > 10
-					and coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date, _pta, _eta) > now()::date
-					and coalesce(_departure_date_actual, _etd_wakeo, _ptd, _etd) <= now()::date
-					and _eta is not null
-						then 'red'
-				when coalesce(_ptd, _etd) < coalesce(_departure_date_actual, _etd_wakeo, _ptd, _etd)
-					and coalesce(_pta,_eta) < coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date)
-					and ((coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date) - coalesce(_departure_date_actual, _etd_wakeo)) - (coalesce(_pta,_eta) - coalesce(_ptd, _etd))) > 10
-					and coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date, _pta, _eta) > now()::date 
-					and coalesce(_departure_date_actual, _etd_wakeo, _ptd, _etd) <= now()::date
-					and _eta is not null
-						then 'red'
-				when coalesce(_pta,_eta) < coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date)
-					and ((coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date) - coalesce(_departure_date_actual, _etd_wakeo)) - (coalesce(_pta,_eta) - coalesce(_ptd, _etd))) <= 10
-					and coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date, _pta, _eta) > now()::date
-					and coalesce(_departure_date_actual, _etd_wakeo, _ptd, _etd) <= now()::date
-					and _eta is not null
-						then 'yellow'
-				when coalesce(_ptd, _etd) < coalesce(_departure_date_actual, _etd_wakeo, _ptd, _etd)
-					and coalesce(_pta,_eta) < coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date)
-					and ((coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date) - coalesce(_departure_date_actual, _etd_wakeo)) - (coalesce(_pta,_eta) - coalesce(_ptd, _etd))) <= 10
-					and coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date, _pta, _eta) > now()::date 
-					and coalesce(_departure_date_actual, _etd_wakeo, _ptd, _etd) <= now()::date
-					and _eta is not null
-						then 'yellow'
-				when coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date, _pta, _eta) > now()::date
-					and (coalesce(_pta,_eta) = coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date)
-						or coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date) is null)
-					and coalesce(_departure_date_actual, _etd_wakeo, _ptd, _etd) <= now()::date
+				when coalesce(_arrival_date_actual, _arrival_date) is not null
+					and coalesce(_arrival_date_actual, _arrival_date) <= now()::date
+						then 'dark green'				
+				when (coalesce(_pta,_eta) >= _eta_wakeo
+						or _eta_wakeo is null)
+					and coalesce(_departure_date_actual, _departure_date) <= now()::date
 					and _eta is not null
 						then 'green'
-				when coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date) is not null
-					and coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date) <= now()::date
-						then 'dark green'
-				else null
-			end																																	_03_po_transit_expt
-			,case 
-				when coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date) is not null
-					and coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date) <= now()::date
-					and (_del is null or _del > now()::date )
-					and now()::date > (coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date) + interval '7 days')
-					and (_goods_cleared_destination is null or _goods_cleared_destination > now()::Date)
+				when coalesce(_pta,_eta) <> _eta_wakeo
+					and (_eta_wakeo - (coalesce(_pta,_eta))) > 10
+					and coalesce(_departure_date_actual,_departure_date) <= now()::date
+					and _eta is not null
 						then 'red'
-				when coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date) is not null
-					and coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date) <= now()::date
-					and (_del is null or _del > now()::date )
-					and now()::date > (coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date) + interval '3 days')
-					and now()::date <= (coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date) + interval '7 days')
-					and (_goods_cleared_destination is null or _goods_cleared_destination > now()::Date)
+				when coalesce(_pta,_eta) <> _eta_wakeo
+					and (_eta_wakeo - (coalesce(_pta,_eta))) <= 10 and (_eta_wakeo - (coalesce(_pta,_eta))) > 0 
+					and coalesce(_departure_date_actual, _departure_date) <= now()::date
+					and _eta is not null
 						then 'yellow'
+				else null end																													_03_po_transit_expt
+			,case 
 				when (_goods_cleared_destination is not null and _goods_cleared_destination <= now()::Date)
 					or (_del is not null and _del <=now()::Date)
 						then 'dark green'
-				when coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date) is not null
-					and coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date) <= now()::date
+				when coalesce(_arrival_date_actual, _arrival_date) is not null
+					and coalesce(_arrival_date_actual, _arrival_date) <= now()::date
 					and (_goods_cleared_destination is null or _goods_cleared_destination > now()::Date)
 					and (_del is null or _del > now()::date )
-					and now()::date <= (coalesce(_arrival_date_actual, _eta_wakeo, _arrival_date) + interval '3 days')
+					and now()::date <= (coalesce(_arrival_date_actual, _arrival_date) + interval '5 days')
 						then 'green'
-				else null
-			end																																	_04_po_custom_clear_expt
+				when coalesce(_arrival_date_actual, _arrival_date) is not null
+					and coalesce(_arrival_date_actual, _arrival_date) <= now()::date
+					and (_goods_cleared_destination is null or _goods_cleared_destination > now()::Date)
+					and (_del is null or _del > now()::date )
+					and now()::date > (coalesce(_arrival_date_actual, _arrival_date) + interval '7 days')
+						then 'red'
+				when coalesce(_arrival_date_actual, _arrival_date) is not null
+					and coalesce(_arrival_date_actual, _arrival_date) <= now()::date
+					and (_goods_cleared_destination is null or _goods_cleared_destination > now()::Date)
+					and (_del is null or _del > now()::date )
+					and now()::date > (coalesce(_arrival_date_actual, _arrival_date) + interval '5 days')
+					and now()::date <= (coalesce(_arrival_date_actual, _arrival_date) + interval '7 days')
+					and (_goods_cleared_destination is null or _goods_cleared_destination > now()::Date)
+						then 'yellow'
+				else null end																													_04_po_custom_clear_expt
 			,case 
+				when _del is not null and _del <= now()::date
+					then 'dark green'
+				when _current_edd_fo <= _po_need_by_date
+					and (_del is null or _del > now()::date)
+					and coalesce(_eta_wakeo, _eta) is not null
+						then 'green'
 				when _current_edd_fo > _po_need_by_date
 					and (_del is null or _del > now()::date)
 					and (_current_edd_fo::date - _po_need_by_date::date) > 3
-					and coalesce(_eta_wakeo, _arrival_date, _eta)  is not null
+					and coalesce(_eta_wakeo, _eta)  is not null
 						then 'red'
 				when _current_edd_fo > _po_need_by_date
 					and (_del is null or _del > now()::date)
 					and (_current_edd_fo::date - _po_need_by_date::date) between 0 and 3
-					and coalesce(_eta_wakeo, _arrival_date, _eta) is not null
-						then 'yelllow'
-				when _current_edd_fo <= _po_need_by_date
-					and (_del is null or _del > now()::date)
-					and coalesce(_eta_wakeo, _arrival_date, _eta) is not null
-						then 'green'
-				when _del is not null and _del <= now()::date
-					then 'dark green'
-			end																																	_05_po_delivery_expt
+					and coalesce(_eta_wakeo, _eta) is not null
+						then 'yellow'			
+				else null end																													_05_po_delivery_expt
 		from _main m
 		union all
 	-- ############################################################### PO pending block ###############################################################
@@ -1408,10 +1379,12 @@ from (
 								,null::date 																						_pickup_date
 								,null::date 																						_cargo_ho
 								,null::date 																						_eta
+								,null::date																						_eta_simple
 								,null::date 																						_revised_eta
 								,null::date 																						_eta_wakeo
 								,null::date 																						_full_eta
 								,null::date 																						_etd
+								,null::date 																						_etd_simple
 								,null::date 																						_revised_etd
 								,null::date 																						_etd_wakeo
 								,null::date 																						_full_etd
@@ -1420,7 +1393,6 @@ from (
 								,null::date 																						_first_etd_po
 								,null::date 																						_current_edd_po
 								,null::date 																						_first_etd_fo
-								,null::date 																						_current_edd_fo
 								,null::date 																						_pod_date
 								,null::date 																						_do_date
 								,null::date																						_do_exp
@@ -1496,6 +1468,7 @@ from (
 								,null::text	 																					_ship_focus_status
 								,null::text 																						_pre_alert
 								,null::text 																						_dn
+								,null::date 																						_current_edd_fo
 								,null::numeric 																					_actual_lead
 								,null::text 																						_health_check
 								,null::text 																						_status

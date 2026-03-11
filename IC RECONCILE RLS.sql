@@ -464,8 +464,7 @@ inner join (
 									,('KRISHNAN.KRISHNAMURTHY@ISS-GF.COM','AEO1')
 									,('KRISHNAN.KRISHNAMURTHY@ISS-GF.COM','AEO3')
 									,('KRISHNAN.KRISHNAMURTHY@ISS-GF.COM','AEH1')
-									
-
+									,('GALIP.OZCAN@ISS-GF.COM','TRO1')
 									,('STEPHANIE.CUPIDO@ISS-GF.COM','ZAO1')
 				) a
 			) l
