@@ -466,6 +466,7 @@ inner join (
 									,('KRISHNAN.KRISHNAMURTHY@ISS-GF.COM','AEH1')
 									,('GALIP.OZCAN@ISS-GF.COM','TRO1')
 									,('STEPHANIE.CUPIDO@ISS-GF.COM','ZAO1')
+									,('SANOJ.G@ISS-GF.COM','BHO1')
 				) a
 			) l
 	on b._side_a = l._office
