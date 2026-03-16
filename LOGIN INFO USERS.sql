@@ -4,7 +4,7 @@
 
 -- set var value (assign code)
 set dev.users_login = 
---$sql$
+$sql$
 
 
 select 
@@ -19,7 +19,7 @@ select
 	,upper(u.email) 														_user_email
 	,(regexp_match(u.email, 'test', 'i'))[1]								_is_test
 	,u."createdAt"::date													_user_created_date
-	,upper(c."name") 													_company										
+	,coalesce(upper(c."name"),'NA')										_company										
 	,b."name" 															_branch
 	,upper(b.country) 														_branch_country
 	,upper(b.city) 														_branch_city
@@ -56,8 +56,9 @@ left join public.focus__contacts  o
 left join portal."Organization" n 
 	on n.id = u."organizationId" 
 where 1=1
-	and u."role" <> 'IssAdmin'
-	and upper(c."name") is not null
+--	and u."role" <> 'IssAdmin'
+--	and upper(c."name") is not null
+--	and u.id in (801,781,723)
 	
 $sql$
 
