@@ -100,31 +100,6 @@ select
 				then 'dark green'
 		else null
 	end 																																_06_expt_status
--- ############################################### EXCEPTION CHECK ####################################################
---	,case
---		when _line_type <> 'Enriched'
---			and array['dark green'] <@ array_agg(_01_po_aknowledgment_expt) over(partition by _po_no_ekporef, _line_no)
---			and array['dark green'] <@ array_agg(_02_po_pickup_departure_expt) over(partition by _po_no_ekporef, _line_no)
---			and array['dark green'] <@ array_agg(_03_po_transit_expt) over(partition by _po_no_ekporef, _line_no)
---			and array['dark green'] <@ array_agg(_04_po_custom_clear_expt) over(partition by _po_no_ekporef, _line_no)
---			and array['dark green'] <@ array_agg(_05_po_delivery_expt) over(partition by _po_no_ekporef, _line_no)
---			and (sum(_balance_outer_qnty) over(partition by _po_no_ekporef, _line_no) = 0)
---				then 'dark green'
---		else null
---	end 																																_check
---	,array_agg(_01_po_aknowledgment_expt) over(partition by _po_no_ekporef, _line_no)													_null_check_01
---	,array_agg(_02_po_pickup_departure_expt) over(partition by _po_no_ekporef, _line_no)												_null_check_02
---	,array_agg(_03_po_transit_expt) over(partition by _po_no_ekporef, _line_no)														_null_check_03
---	,array_agg(_04_po_custom_clear_expt) over(partition by _po_no_ekporef, _line_no)													_null_check_04
---	,array_agg(_05_po_delivery_expt) over(partition by _po_no_ekporef, _line_no)														_null_check_05
---	,coalesce(
---			('green' = any( array_agg(_01_po_aknowledgment_expt) over(partition by _po_no_ekporef, _line_no))
---			or 'green' = any( array_agg(_02_po_pickup_departure_expt) over(partition by _po_no_ekporef, _line_no))
---			or 'green' = any( array_agg(_03_po_transit_expt) over(partition by _po_no_ekporef, _line_no))
---			or 'green' = any( array_agg(_04_po_custom_clear_expt) over(partition by _po_no_ekporef, _line_no))
---			or 'green' = any( array_agg(_05_po_delivery_expt) over(partition by _po_no_ekporef, _line_no)) )
---			,false)
---			and (sum(_balance_outer_qnty) filter(where _line_type <> 'Enriched') over(partition by _po_no_ekporef, _line_no) ) > 0											_07_check
 from (
 	-- ############################################################### PO enriched block ###############################################################
 	with _pre_calc as(
@@ -186,8 +161,9 @@ from (
 					,pol.current_po_promised_dt																						_po_need_by_date
 		-- >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> FO LINES
 					,case 
-						when feic._ship_response ->> 'serial_no' is null then fe.service
-						else (feic._ship_response ->> 'service')::text end															_mode
+						when poc.iss_domain = fe.iss_domain
+							then coalesce(fe.service, fe.shipment_response ->> 'service')
+						else null end																								_mode
 					,fe.routed_by																									_routed_by
 					,fe.shipment_remarks																								_ship_remarks_updates
   					,fe.billing_notes																								_ship_billing_remarks	
@@ -1043,20 +1019,20 @@ from (
 											- _days_total_comm_perf) > 60
 										then 'Severe'
 								end																												_health_check
-								,case 
+								,case  
 										when _full_etd is null 
 												then 'Pending'
 										when (_shipment_serial_iss_job <> '' or _shipment_serial_iss_job is not null)
-											and _full_eta <= now()::date
-											and _full_etd <= now()::date
+											and coalesce(_arrival_date_actual, _arrival_date) <= now()::date
+											and coalesce(_departure_date_actual, _departure_date) <= now()::date
 											and _del <= now()::date
 												then 'Delivered'
 										when (_shipment_serial_iss_job <> '' or _shipment_serial_iss_job is not null)
 											and regexp_match(_ship_focus_status,'cancel','i') is not null 
 												then 'Cancelled'
 										when (_shipment_serial_iss_job <> '' or _shipment_serial_iss_job is not null or _response_shipment_id is not null)
-											and _full_eta > now()::date
-											and _full_etd <= now()::date 
+											and (coalesce(_arrival_date_actual, _arrival_date) > now()::date or coalesce(_arrival_date_actual, _arrival_date) is null)
+											and coalesce(_departure_date_actual, _departure_date) <= now()::date 
 												then 'In transit'
 										when (_shipment_serial_iss_job = '' or _shipment_serial_iss_job is null)
 											and (y._fo_id is not null or _full_etd > now()::date)
@@ -1064,11 +1040,11 @@ from (
 										when (_shipment_serial_iss_job is not null
 											and _shipment_serial_iss_job <> '')
 											and regexp_match(_ship_focus_status,'cancel','i') is null
-											and 	_departure_date_actual is null
+											and 	coalesce(_departure_date_actual, _departure_date) is null
 												then 'Ongoing'
 										when (_shipment_serial_iss_job <> '' or _shipment_serial_iss_job is not null)
-											and _full_eta <= now()::date
-											and _full_etd <= now()::date
+											and coalesce(_arrival_date_actual, _arrival_date) <= now()::date
+											and coalesce(_departure_date_actual, _departure_date) <= now()::date
 											and (_del is null or _del > now()::date)
 												then 'Arrived'
 										else null
@@ -1515,6 +1491,7 @@ from (
 	) m 
 where 1=1
 --	and _po_no_ekporef = '624000447-1'
+--	and _fo_serial= 'EMA000022'
 	
 	
 

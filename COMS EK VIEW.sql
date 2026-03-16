@@ -41,8 +41,9 @@ $sql$
 					,p.po_desc 																						_commodity
 					,f.serial_no																						_iss_ref
 					,case 
-						when feic._ship_response ->> 'serial_no' is null then fe.service
-						else (feic._ship_response ->> 'service')::text end											_mode
+						when poc.iss_domain = fe.iss_domain
+							then coalesce(fe.service, fe.shipment_response ->> 'service')
+						else null end																				_mode
 					,fu.purchase_order_company_id																	_client_id
 				    ,poc."company_name"																				_client
 					,fe."routed_by" 																					_routed_by
@@ -301,6 +302,10 @@ $sql$
 					    where item like '% x 40 ft%')* 2																				_teus
 					,car._name																										_carrier
 					,(feic._ship_response ->> 'arrival_date'::text)::date																_arrival_date
+					,(select min(item ->> 'date')
+						from jsonb_array_elements(feic._ship_response::jsonb -> 'status_updates') item
+						where item ->> 'status' ilike '%Actual Time of Arrival%'
+								or item ->> 'status' ilike '%Vessel arrival%')::date													_arrival_date_actual
 					,(feic._ship_response ->> 'loading_date'::text)::date																_departure_date
 					,(select min(item ->> 'date')
 						from jsonb_array_elements(feic._ship_response::jsonb -> 'status_updates') item
@@ -916,35 +921,36 @@ $sql$
 					- _days_total_comm_perf) > 60
 				then 'Severe'
 		end																													_health_check
-		,case 
-			when _full_etd is null 
-					then 'Pending'
-			when (_shipment_serial_iss_job <> '' or _shipment_serial_iss_job is not null)
-				and _full_eta <= now()::date
-				and _full_etd <= now()::date
-				and _del <= now()::date
-					then 'Delivered'
-			when (_shipment_serial_iss_job <> '' or _shipment_serial_iss_job is not null)
-				and regexp_match(_ship_focus_status,'cancel','i') is not null 
-					then 'Cancelled'
-			when (_shipment_serial_iss_job <> '' or _shipment_serial_iss_job is not null or _response_shipment_id is not null)
-				and _full_eta > now()::date
-				and _full_etd <= now()::date 
-					then 'In transit'
-			when (_shipment_serial_iss_job = '' or _shipment_serial_iss_job is null)
-				and (y._fo_id is not null or _full_etd > now()::date)
-					then 'Ongoing'
-			when (_shipment_serial_iss_job is not null
-				and _shipment_serial_iss_job <> '')
-				and regexp_match(_ship_focus_status,'cancel','i') is null
-				and 	_departure_date_actual is null
-					then 'Ongoing'
-			when (_shipment_serial_iss_job <> '' or _shipment_serial_iss_job is not null)
-				and _full_eta <= now()::date
-				and _full_etd <= now()::date
-				and (_del is null or _del > now()::date)
-					then 'Arrived'
-			else null end																									_status
+		,case  
+				when _full_etd is null 
+						then 'Pending'
+				when (_shipment_serial_iss_job <> '' or _shipment_serial_iss_job is not null)
+					and coalesce(_arrival_date_actual, _arrival_date) <= now()::date
+					and coalesce(_departure_date_actual, _departure_date) <= now()::date
+					and _del <= now()::date
+						then 'Delivered'
+				when (_shipment_serial_iss_job <> '' or _shipment_serial_iss_job is not null)
+					and regexp_match(_ship_focus_status,'cancel','i') is not null 
+						then 'Cancelled'
+				when (_shipment_serial_iss_job <> '' or _shipment_serial_iss_job is not null or _response_shipment_id is not null)
+					and (coalesce(_arrival_date_actual, _arrival_date) > now()::date or coalesce(_arrival_date_actual, _arrival_date) is null)
+					and coalesce(_departure_date_actual, _departure_date) <= now()::date 
+						then 'In transit'
+				when (_shipment_serial_iss_job = '' or _shipment_serial_iss_job is null)
+					and (y._fo_id is not null or _full_etd > now()::date)
+						then 'Ongoing'
+				when (_shipment_serial_iss_job is not null
+					and _shipment_serial_iss_job <> '')
+					and regexp_match(_ship_focus_status,'cancel','i') is null
+					and 	coalesce(_departure_date_actual, _departure_date) is null
+						then 'Ongoing'
+				when (_shipment_serial_iss_job <> '' or _shipment_serial_iss_job is not null)
+					and coalesce(_arrival_date_actual, _arrival_date) <= now()::date
+					and coalesce(_departure_date_actual, _departure_date) <= now()::date
+					and (_del is null or _del > now()::date)
+						then 'Arrived'
+				else null
+			end 																												_status
     		,case 
 				when _e2e_total_lt > 0
 					then abs((_e2e_total_lt - _days_total_comm_perf)
@@ -1084,8 +1090,10 @@ select
 	,max(_count_of_cont)																	_count_of_cont
 	,max(_teus)																			_teus
 	,max(_carrier)																		_carrier
-	,max(_arrival_date)																	_arrival_date
-	,max(_departure_date)																_departure_date
+	,max(_arrival_date)	filter(where _sort = 1)											_arrival_date
+	,max(_arrival_date_actual) filter(where _sort = 1)									_arrival_date_actual
+	,max(_departure_date)	filter(where _sort = 1)										_departure_date
+	,max(_departure_date_actual) filter(where _sort = 1)									_departure_date_actual
 	,max(_pr_appr_date)																	_pr_appr_date
 	,max(_po_app_date)																	_po_app_date
 	,max(_po_creation_date)																_po_creation_date
@@ -1244,7 +1252,9 @@ md5(
 	,NULL                  									_teus
 	,NULL                  									_carrier
 	,null 													_arrival_date
+	,null 													_arrival_date_actual
 	,null 													_departure_date
+	,null 													_departure_date_actual
 	,a._pr_appr_date       									_pr_appr_date
 	,a._po_app_date       									_po_appr_date
 	,a._po_creation_date   									_po_creation_date
