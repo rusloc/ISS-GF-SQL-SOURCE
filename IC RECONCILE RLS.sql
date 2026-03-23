@@ -467,6 +467,11 @@ inner join (
 									,('GALIP.OZCAN@ISS-GF.COM','TRO1')
 									,('STEPHANIE.CUPIDO@ISS-GF.COM','ZAO1')
 									,('SANOJ.G@ISS-GF.COM','BHO1')
+									,('KIET.BUI@ISS-GF.COM','VNO1')
+									,('GANAGESWARY.C@ISS-GF.COM','MYO1')
+									,('KORNCHAYAWEE.SAKUNLOR@ISS-GF.COM','INO1')
+									,('JOSHUA.ARPUTHASAMY@ISS-GF.COM','MYO1')
+									,('GIRISH.CG@ISS-GF.COM','INO1')
 				) a
 			) l
 	on b._side_a = l._office
@@ -485,6 +490,10 @@ where 1=1
 	and _page = 'RLS'
 	
 	
-	
+
+
+
+
+
 	
 	

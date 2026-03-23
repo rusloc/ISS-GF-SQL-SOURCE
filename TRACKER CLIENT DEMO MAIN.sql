@@ -4,7 +4,7 @@
 
 -- set var and assign code
 set dev.tracker_client_demo = 
-$sql$ 
+--$sql$ 
 
 
 
