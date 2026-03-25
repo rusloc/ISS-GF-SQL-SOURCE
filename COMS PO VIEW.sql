@@ -9,7 +9,7 @@
  * 			> one query which captures PO lines for those POs with remaining quantity > 0
  * 		* Wrapper (final) block:
  * 			> first lines of SELECT with two blocks in a subquery: wraps (glues) both together into single table
- * 			> adds Exceptions
+ * 			> adds Exception at PO level (master line)
  * 
  * Logic:
  * 
@@ -698,6 +698,7 @@ from (
   						when att._rows is null and fs."ID" is not null
   							then 'No' 
   						else null end																								_dn
+  					,_sla._sla_map																									_sla_map
 				from portal.purchase_order_on_freight_unit pofu
 				inner join portal.purchase_order_company poc 
 					on poc.id = pofu.purchase_order_company_id 
@@ -900,6 +901,29 @@ from (
 					on (slt.supplier_id)::int = (pol.supplier_no)::int
 				left join portal.country_average_transit_time ctt
 					on ctt.code = coalesce(feic._ship_response ->> 'origin_country',fe.origin_country)
+			/*
+				 IMPORTANT: sla limits joined as "flat table packed into single JSON object" 
+							* keeps all data inside JSON object
+							* removes duplications when joined
+			*/
+				left join lateral (
+									select 
+									  jsonb_agg(
+									    jsonb_build_object(
+									    	'company',company_id 
+									      ,'exception',sla_type
+									      ,'mode',mode
+									      ,'port',destination_port
+									      ,'severity',severity
+									      ,'values',jsonb_build_object( 'min',min_sla,'max',max_sla)
+									    )
+									  ) 																						_sla_map
+									from portal.sla_master_coms s
+									where 1=1
+										and s.active = 'Yes'
+										and s.company_id = pofu.purchase_order_company_id
+								) _sla
+					on true
 				where 1=1
 		)
 		,_calc as (
@@ -1153,16 +1177,41 @@ from (
 			,case 
 				when _etd is not null and _eta is not null and _crd is not null then 'dark green'
 				else 'green' end																													_01_po_aknowledgment_expt
+		-- BOOKING PERF exception uses dynamic values fetched from 'SLA_MASTER_COMS' table (see joined table in pre_calc CTE)
 			,case 
 				when coalesce(_departure_date_actual, _departure_date) is not null
 					and coalesce(_departure_date_actual, _departure_date) <= now()::date
 						then 'dark green'
-				when coalesce(_etd_wakeo, _ptd, _etd) <= (_crd + interval '5 days')
+				when coalesce(_etd_wakeo, _ptd, _etd) <= (_crd + ((jsonb_path_query_first(
+																    _sla_map
+																    ,'$[*] ? (@.severity == $col && @.exception == $expt)'
+																    ,jsonb_build_object(
+																    						'col','Green'
+																    						,'expt', 'Booking Performance')
+																  )) -> 'values' ->> 'max')::int * interval '1 day')
 						then 'green'
-				when coalesce(_etd_wakeo, _ptd, _etd) > (_crd + interval '5 days')
-					and coalesce(_etd_wakeo, _ptd, _etd) <= (_crd + interval '7 days')
+				when coalesce(_etd_wakeo, _ptd, _etd) > (_crd + ((jsonb_path_query_first(
+																    _sla_map
+																    ,'$[*] ? (@.severity == $col && @.exception == $expt)'
+																    ,jsonb_build_object(
+																    						'col','Yellow'
+																    						,'expt', 'Booking Performance')
+																  )) -> 'values' ->> 'min')::int * interval '1 day')
+					and coalesce(_etd_wakeo, _ptd, _etd) <= (_crd + ((jsonb_path_query_first(
+																    _sla_map
+																    ,'$[*] ? (@.severity == $col && @.exception == $expt)'
+																    ,jsonb_build_object(
+																    						'col','Yellow'
+																    						,'expt', 'Booking Performance')
+																  )) -> 'values' ->> 'max')::int * interval '1 day')
 						then 'yellow'
-				when coalesce(_etd_wakeo, _ptd, _etd) > (_crd + interval '7 days')
+				when coalesce(_etd_wakeo, _ptd, _etd) > (_crd + ((jsonb_path_query_first(
+																    _sla_map
+																    ,'$[*] ? (@.severity == $col && @.exception == $expt)'
+																    ,jsonb_build_object(
+																    						'col','Red'
+																    						,'expt', 'Booking Performance')
+																  )) -> 'values' ->> 'min')::int * interval '1 day')
 						then 'red'				
 				else null end																													_02_po_pickup_departure_expt
 			,case 
@@ -1444,6 +1493,7 @@ from (
 								,null::text	 																					_ship_focus_status
 								,null::text 																						_pre_alert
 								,null::text 																						_dn
+								,null::jsonb																						_sla_map
 								,null::date 																						_current_edd_fo
 								,null::numeric 																					_actual_lead
 								,null::text 																						_health_check
