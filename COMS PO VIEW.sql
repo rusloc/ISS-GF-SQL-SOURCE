@@ -1185,33 +1185,33 @@ from (
 						then 'dark green'
 				when coalesce(_etd_wakeo, _ptd, _etd) <= (_crd + ((jsonb_path_query_first(
 																    _sla_map
-																    ,'$[*] ? (@.severity == $col && @.exception == $expt)'
+																    ,'$[*] ? (@.severity == $_col && @.exception == $_expt)'
 																    ,jsonb_build_object(
-																    						'col','Green'
-																    						,'expt', 'Booking Performance')
+																    						'_col','Green'
+																    						,'_expt', 'Booking Performance')
 																  )) -> 'values' ->> 'max')::int * interval '1 day')
 						then 'green'
 				when coalesce(_etd_wakeo, _ptd, _etd) > (_crd + ((jsonb_path_query_first(
 																    _sla_map
-																    ,'$[*] ? (@.severity == $col && @.exception == $expt)'
+																    ,'$[*] ? (@.severity == $_col && @.exception == $_expt)'
 																    ,jsonb_build_object(
-																    						'col','Yellow'
-																    						,'expt', 'Booking Performance')
+																    						'_col','Yellow'
+																    						,'_expt', 'Booking Performance')
 																  )) -> 'values' ->> 'min')::int * interval '1 day')
 					and coalesce(_etd_wakeo, _ptd, _etd) <= (_crd + ((jsonb_path_query_first(
 																    _sla_map
-																    ,'$[*] ? (@.severity == $col && @.exception == $expt)'
+																    ,'$[*] ? (@.severity == $_col && @.exception == $_expt)'
 																    ,jsonb_build_object(
-																    						'col','Yellow'
-																    						,'expt', 'Booking Performance')
+																    						'_col','Yellow'
+																    						,'_expt', 'Booking Performance')
 																  )) -> 'values' ->> 'max')::int * interval '1 day')
 						then 'yellow'
 				when coalesce(_etd_wakeo, _ptd, _etd) > (_crd + ((jsonb_path_query_first(
 																    _sla_map
-																    ,'$[*] ? (@.severity == $col && @.exception == $expt)'
+																    ,'$[*] ? (@.severity == $_col && @.exception == $_expt)'
 																    ,jsonb_build_object(
-																    						'col','Red'
-																    						,'expt', 'Booking Performance')
+																    						'_col','Red'
+																    						,'_expt', 'Booking Performance')
 																  )) -> 'values' ->> 'min')::int * interval '1 day')
 						then 'red'				
 				else null end																													_02_po_pickup_departure_expt
@@ -1225,12 +1225,34 @@ from (
 					and _eta is not null
 						then 'green'
 				when coalesce(_pta,_eta) <> _eta_wakeo
-					and (_eta_wakeo - (coalesce(_pta,_eta))) > 10
+					and (_eta_wakeo - (coalesce(_pta,_eta))) > ((jsonb_path_query_first(
+																    _sla_map
+																    ,'$[*] ? (@.severity == $_col && @.exception == $_expt && @.mode == $_mode)'
+																    ,jsonb_build_object(
+																    						'_col','Red'
+																    						,'_expt', 'Transit Delay'
+																    						,'_mode', initcap(split_part(_mode,'_',1))
+																  )) -> 'values' ->> 'min')::int)
 					and coalesce(_departure_date_actual,_departure_date) <= now()::date
 					and _eta is not null
 						then 'red'
 				when coalesce(_pta,_eta) <> _eta_wakeo
-					and (_eta_wakeo - (coalesce(_pta,_eta))) <= 10 and (_eta_wakeo - (coalesce(_pta,_eta))) > 0 
+					and (_eta_wakeo - (coalesce(_pta,_eta))) <= ((jsonb_path_query_first(
+																    _sla_map
+																    ,'$[*] ? (@.severity == $_col && @.exception == $_expt && @.mode == $_mode)'
+																    ,jsonb_build_object(
+																    						'_col','Yellow'
+																    						,'_expt', 'Transit Delay'
+																    						,'_mode', initcap(split_part(_mode,'_',1))
+																  )) -> 'values' ->> 'max')::int) 
+					and (_eta_wakeo - (coalesce(_pta,_eta))) > ((jsonb_path_query_first(
+																    _sla_map
+																    ,'$[*] ? (@.severity == $_col && @.exception == $_expt && @.mode == $_mode)'
+																    ,jsonb_build_object(
+																    						'_col','Yellow'
+																    						,'_expt', 'Transit Delay'
+																    						,'_mode', initcap(split_part(_mode,'_',1))
+																  )) -> 'values' ->> 'min')::int)
 					and coalesce(_departure_date_actual, _departure_date) <= now()::date
 					and _eta is not null
 						then 'yellow'
@@ -1243,20 +1265,52 @@ from (
 					and coalesce(_arrival_date_actual, _arrival_date) <= now()::date
 					and (_goods_cleared_destination is null or _goods_cleared_destination > now()::Date)
 					and (_del is null or _del > now()::date )
-					and now()::date <= (coalesce(_arrival_date_actual, _arrival_date) + interval '5 days')
+					and now()::date <= (coalesce(_arrival_date_actual, _arrival_date) + ((jsonb_path_query_first(
+																					    _sla_map
+																					    ,'$[*] ? (@.severity == $_col && @.exception == $_expt && @.mode == $_mode && @.port == $_port)'
+																					    ,jsonb_build_object(
+																					    						'_col','Green'
+																					    						,'_expt', 'Customs Clearance & Delivery'
+																					    						,'_mode', initcap(split_part(_mode,'_',1))
+																					    						,'_port', _destination_port_code_dest)
+																					  )) -> 'values' ->> 'max')::int * interval '1 day')
 						then 'green'
 				when coalesce(_arrival_date_actual, _arrival_date) is not null
 					and coalesce(_arrival_date_actual, _arrival_date) <= now()::date
 					and (_goods_cleared_destination is null or _goods_cleared_destination > now()::Date)
 					and (_del is null or _del > now()::date )
-					and now()::date > (coalesce(_arrival_date_actual, _arrival_date) + interval '7 days')
+					and now()::date > (coalesce(_arrival_date_actual, _arrival_date) + ((jsonb_path_query_first(
+																					    _sla_map
+																					    ,'$[*] ? (@.severity == $_col && @.exception == $_expt && @.mode == $_mode && @.port == $_port)'
+																					    ,jsonb_build_object(
+																					    						'_col','Red'
+																					    						,'_expt', 'Customs Clearance & Delivery'
+																					    						,'_mode', initcap(split_part(_mode,'_',1))
+																					    						,'_port', _destination_port_code_dest)
+																					  )) -> 'values' ->> 'min')::int * interval '1 day')
 						then 'red'
 				when coalesce(_arrival_date_actual, _arrival_date) is not null
 					and coalesce(_arrival_date_actual, _arrival_date) <= now()::date
 					and (_goods_cleared_destination is null or _goods_cleared_destination > now()::Date)
 					and (_del is null or _del > now()::date )
-					and now()::date > (coalesce(_arrival_date_actual, _arrival_date) + interval '5 days')
-					and now()::date <= (coalesce(_arrival_date_actual, _arrival_date) + interval '7 days')
+					and now()::date > (coalesce(_arrival_date_actual, _arrival_date) + ((jsonb_path_query_first(
+																					    _sla_map
+																					    ,'$[*] ? (@.severity == $_col && @.exception == $_expt && @.mode == $_mode && @.port == $_port)'
+																					    ,jsonb_build_object(
+																					    						'_col','Green'
+																					    						,'_expt', 'Customs Clearance & Delivery'
+																					    						,'_mode', initcap(split_part(_mode,'_',1))
+																					    						,'_port', _destination_port_code_dest)
+																					  )) -> 'values' ->> 'min')::int * interval '1 day')
+					and now()::date <= (coalesce(_arrival_date_actual, _arrival_date) + ((jsonb_path_query_first(
+																					    _sla_map
+																					    ,'$[*] ? (@.severity == $_col && @.exception == $_expt && @.mode == $_mode && @.port == $_port)'
+																					    ,jsonb_build_object(
+																					    						'_col','Green'
+																					    						,'_expt', 'Customs Clearance & Delivery'
+																					    						,'_mode', initcap(split_part(_mode,'_',1))
+																					    						,'_port', _destination_port_code_dest)
+																					  )) -> 'values' ->> 'max')::int * interval '1 day')
 					and (_goods_cleared_destination is null or _goods_cleared_destination > now()::Date)
 						then 'yellow'
 				else null end																													_04_po_custom_clear_expt
