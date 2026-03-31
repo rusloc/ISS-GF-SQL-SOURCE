@@ -17,10 +17,11 @@ select
 			,a."VOUCHER" 
 				|| '_' || upper(trim(a."DATAAREA")) 
 				|| '_' || upper(trim(coalesce(nullif(a."COUNTERPARTY",''),'NA')))						_doc_id
-			,md5(
+			,encode(sha256((
 				a."VOUCHER" 
 				|| '_' || upper(trim(a."DATAAREA")) 
-				|| '_' || upper(trim(coalesce(nullif(a."COUNTERPARTY",''),'NA'))))					_md5
+				|| '_' || upper(trim(coalesce(nullif(a."COUNTERPARTY",''),'NA'))))::bytea)
+				,'hex')																				_md5
 			,a."GENERALJOURNALACCOUNTENTRYRECID"														_record_ID
 			,a."ACCOUNTINGDATE"::date																	_date
 			,a."TRANSACTIONCURRENCYAMOUNT"															_amount

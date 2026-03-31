@@ -106,11 +106,11 @@ from (
 				select  
 					'Enriched'																										_line_type
 			-- line id is used in report for synthetic PO line -> to keep all lines visible in report; used row_number() so all lines are different (DO NOT use _line_id from subquery)
-					,md5(pol.po_no || '-' 
-						|| pol.id	||  '-' 
-						|| 'fo shipped'	|| '-'
-						|| fu.serial_no	||  '-'
-						|| row_number() over(partition by pol.po_no order by pol.id))													_line_id
+					,encode(sha256((pol.po_no || '-' 
+						|| pol.id::text	||  '-' 
+						|| 'fo shipped'::text	|| '-'
+						|| fu.serial_no::text	||  '-'
+						|| row_number() over(partition by pol.po_no order by pol.id))::bytea),'hex')									_line_id
 					,_line_id																										_line_no
 					,pol.purchase_order_company_id																					_client_id
 					,poc.company_name																								_client_name
@@ -929,9 +929,10 @@ from (
 		,_calc as (
 						select 
 							y.*
+					-- replace 3 days with SLA_MASTER_COMS data: Customs Clearance & Delivery (green); match mode & port
 							,case
 								when max(coalesce(_eta_wakeo, _eta_simple))
-										over(partition by _fo_id) + interval '3 days'	<= now()::date
+										over(partition by _fo_id) + interval '3 days' <= now()::date
 									and _del is null
 										then now()::date + interval '1 day'
 								else max(coalesce(_eta_wakeo, _eta_simple))
@@ -1292,10 +1293,10 @@ from (
 									when regexp_match(pol.status, 'comple','i') is not null
 										then 'Completed'
 									else 'Pending' end 																			_line_type 
-								,md5(pol.po_no || '-' 
-									|| pol.id ||  '-' 
+								,encode(sha256((pol.po_no::text || '-' 
+									|| pol.id::text ||  '-' 
 									||  'po remaining' ||  '-'
-									|| 	row_number() over(partition by pol.po_no order by pol.id))								_line_id
+									|| 	row_number() over(partition by pol.po_no order by pol.id))::bytea),'hex')					_line_id
 								,_line_id																						_line_no
 								,pol.purchase_order_company_id																	_client_id
 								,poc.company_name																				_client_name

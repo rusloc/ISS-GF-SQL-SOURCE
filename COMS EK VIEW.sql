@@ -22,14 +22,8 @@ $sql$
 				select
 					p."ship_to_location" 																			_branch_bu
 					,p.id																							_pid
-					,md5(
-						coalesce(f.id::text,'NA') 
---						|| coalesce(p.po_no::text,'NA') 
---						|| coalesce(p.po_desc::text,'NA') 
---						|| coalesce(p.current_po_promised_dt::text,'NA') 
---						|| coalesce(f.serial_no::text ,'NA') 
---						|| coalesce((feic._ship_response ->> 'serial_no')::text,'NA')
-						)																							_fo_id
+					,encode(sha256((
+						coalesce(f.id::text,'NA'))::bytea),'hex')													_fo_id
 					,fe.id																							_fe_id
 					,p.supplier_no		 																			_supplier_code
 				-- supplier name form the closest promised date of PO
@@ -1205,11 +1199,11 @@ group by 1
 -- union all PO lines with remaining quantity, no agg, most attrs are NULLs
 union all
 select
-md5( 
+encode(sha256(( 
 	_po_no_EKPOREF::text
 	|| _po_desc::text
 	|| _po_need_by_date::text
-	|| _pid::text)													_line_id
+	|| _pid::text)::bytea),'hex')							_line_id
 	,NULL                  									_shipment_serial_iss_job
 	,null 													_response_shipment_id
 	,null 													_inbound_iss_job_no

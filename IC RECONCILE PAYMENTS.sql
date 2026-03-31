@@ -5,7 +5,7 @@
 
 --set var
 set dev.payments = 
---$sql$
+$sql$
 
 
 select 
@@ -20,7 +20,11 @@ select
 	,p."ACCOUNTINGDATE"::date																			_date
 	,p."VOUCHER" 																						_doc
 	,p."VOUCHER" || '_' || upper(p."DATAAREA") || '-' || upper(p."COUNTERPARTY")						_doc_id
-	,md5(p."VOUCHER" || '_' || upper(p."DATAAREA") || '-' || upper(p."COUNTERPARTY"))					_md5
+	,encode(sha256((
+			(p."VOUCHER" 
+			|| '_' || upper(p."DATAAREA") 
+			|| '-' || upper(p."COUNTERPARTY")))::bytea)
+			,'hex')																						_md5
 	,upper(p."DATAAREA") 																				_payer
 	,upper(p."COUNTERPARTY") 																			_payee
 	,"TRANSACTIONCURRENCYCODE" 																			_cur

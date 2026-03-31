@@ -7,8 +7,12 @@ $sql$
 
   					select 
 						s."VOUCHER" 																			_voucher
-						,s."VOUCHER" || '_' || s."DATAAREA" || '-' || s."COUNTERPARTY"					_row_id
-						,md5(s."VOUCHER" || '_' || s."DATAAREA" || '-' || s."COUNTERPARTY")
+						,s."VOUCHER" || '_' || s."DATAAREA" || '-' || s."COUNTERPARTY"						_row_id
+						,encode(sha256((
+								s."VOUCHER" 
+								|| '_' || s."DATAAREA" 
+								|| '-' || s."COUNTERPARTY")::bytea)
+								,'hex')																		"md5"
 						,upper(s."DATAAREA")																	_vendor
 						,upper(s."COUNTERPARTY")																_client
 						,s."ACCOUNTINGDATE"::date																_date

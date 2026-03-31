@@ -30,7 +30,7 @@ select
 	,_po_number_sku
 	,_description
 	,_invoice_number
-	,md5(row_number() over (partition by _client, _serial)::text || _sku_main_link) as _row_id
+	,encode(sha256((row_number() over (partition by _client, _serial)::text || coalesce(_sku_main_link::text,'na') )::bytea),'hex') as _row_id
 from (
 	select 
 		distinct on (t_1.serial_no, t_1.contact_id, coalesce(t_1.container_equipment_no, 'NA')) 

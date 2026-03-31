@@ -4,7 +4,7 @@
 
 -- set var and assign code
 set dev.tracker_client_demo = 
---$sql$ 
+$sql$ 
 
 
 
@@ -76,9 +76,9 @@ left join (
 	-- join shipment WEB URL
 			select 
 				upper(trim(s."Serial No"))				_serial 
-				,s."URL to Shipment" 						_web_url
+				,s."URL to Shipment" 					_web_url
 				,s."Containers"							_containers
-				,s."Line Of Business"						_LOB
+				,s."Line Of Business"					_LOB
 				,s."Carrier / Shipping Line"				_analytical_carrier 
 				,s."Co-Loader"							_analytical_coloader
 				,"Offer Serial No"						_offer_serial
@@ -221,6 +221,8 @@ where 1=1
 	and _report = 'TRACKER CLIENT DEMO'
 	and _page = 'MAIN'
 
+
+	
 
 
 

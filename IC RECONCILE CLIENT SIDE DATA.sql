@@ -31,7 +31,11 @@ from (
 							,i._iss_dom																				_iss_domain
 							,coalesce(c."Invoice", c."Voucher")														_invoice
 							,coalesce(c."Invoice", c."Voucher") || '_' || c."Vendor Account" || '-' || c."Company"							_inv_id
-							,md5(coalesce(c."Invoice", c."Voucher") || '_' || c."Vendor Account" || '-' || c."Company")
+							,encode(sha256((
+									coalesce(c."Invoice", c."Voucher") 
+											|| '_' || c."Vendor Account"::text 
+											|| '-' || c."Company"::text)::bytea)
+									,'hex')																				"md5"
 							,case 
 								when c."Invoice" ilike '%-CN-%'
 									then 'CR. NOTE'
@@ -67,7 +71,11 @@ union all
 							,i._iss_dom																				_iss_domain
 							,coalesce(c."Invoice", c."Voucher")														_invoice
 							,coalesce(c."Invoice", c."Voucher") || '_' || c."Vendor Account" || '-' || c."Company"							_inv_id
-							,md5(coalesce(c."Invoice", c."Voucher") || '_' || c."Vendor Account" || '-' || c."Company")
+							,encode(sha256((
+									coalesce(c."Invoice", c."Voucher") 
+										|| '_' || c."Vendor Account"::text 
+										|| '-' || c."Company"::text)::bytea)
+									,'hex')																			"md5"
 							,case 
 								when c."Invoice" ilike '%-CN-%'
 									then 'CR. NOTE'
