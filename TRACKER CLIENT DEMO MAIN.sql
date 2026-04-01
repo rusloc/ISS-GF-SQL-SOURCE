@@ -14,7 +14,7 @@ select
 	,((t.cargo)[0] ->> 'gross_volume')::numeric																			_cargo_gross_volume
 	,((t.cargo)[0] ->> 'chargeable_weight')::numeric																	_cargo_chargeable_weight
 	,((t.cargo)[0] ->> 'package_count')::numeric																		_package_count
-	,upper(c."Name")																									_client 
+	,coalesce(upper(cc."name"), upper(c."Name"))																			_client 
 	,t.contact_id																										_client_id
 	,coalesce(s._web_url, 'https://' || t.iss_domain || '.logistaas.com/shipments/' || t.id || '/', '')					_web_url
 	,case
@@ -72,6 +72,8 @@ select
 from portal.materialized_view_shipments_tracker_demo t
 left join public.focus__contacts c 
 	on c."ID" = t.contact_id 
+left join portal.demo_companies cc 
+	on cc.ext_id = t.contact_id 
 left join (
 	-- join shipment WEB URL
 			select 
