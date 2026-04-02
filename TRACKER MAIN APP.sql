@@ -1,23 +1,19 @@
 
 
 
-
--- set var and assign code
-set dev.tracker_client_demo = 
-$sql$ 
-
+-- set var
+set dev.tracking_main_app = 
+$sql$
 
 
 select 
 	t.*
-	,t.serial_no 
-		|| '-' || t.contact_id 
-		|| '-' || coalesce(t.container_equipment_no, 'NA')															_sku_main_link
+	,coalesce(t.calculated_eta, eta_date) + interval '10 days'															_eta_add_10
 	,((t.cargo)[0] ->> 'gross_weight')::numeric																			_cargo_gross_weight
 	,((t.cargo)[0] ->> 'gross_volume')::numeric																			_cargo_gross_volume
 	,((t.cargo)[0] ->> 'chargeable_weight')::numeric																	_cargo_chargeable_weight
 	,((t.cargo)[0] ->> 'package_count')::numeric																		_package_count
-	,coalesce(upper(cc."name"), upper(c."Name"))																			_client 
+	,upper(c."Name")																									_client 
 	,t.contact_id																										_client_id
 	,coalesce(s._web_url, 'https://' || t.iss_domain || '.logistaas.com/shipments/' || t.id || '/', '')					_web_url
 	,case
@@ -28,7 +24,7 @@ select
 	,trim(split_part(t.container_type,'ft',2))																			_container_type_short
 	,substring( t.container_type ,'40')::numeric																		_container_length_40
 	,substring( t.container_type ,'20')::numeric																		_container_length_20
-	,upper(split_part(t.service, '_', 1))																				_service_type_short
+	,upper(split_part(t.service, '_', 1))																				_servive_type_short
 	,upper(split_part(t.service, '_', 1)) || ' ' || upper(split_part(t.service, '_', 2))								_service_type_clean
 	,upper(split_part(t.service, '_', 2))																				_direction													
 	,case 
@@ -46,8 +42,8 @@ select
 			split_part(t.service, '_', 1)) = 'AIR' then t.gross_weight
 		else null
 	end																													_chargeable_weight
-	,coalesce(o."name", t.origin_port)																				_origin_port_name
-	,coalesce(d."name", t.destination_port)																			_destination_port_name 
+	,coalesce(o."name", t.origin_port)																					_origin_port_name
+	,coalesce(d."name", t.destination_port)																				_destination_port_name 
 	,coalesce(oc._name, t.origin_country )																				_origin_country_name
 	,coalesce(dc._name, t.destination_country )																			_destination_country_name
 	,coalesce(upper(c."Name"), 'NA') 	
@@ -56,34 +52,24 @@ select
 	,t.co2_emission_details ->> 'co2e_gptkm'																			_co2e_gptkm
 	,t.co2_emission_details ->> 'co2e'																					_co2e
 	,coalesce(sd._change_date, 'Initialized')																			_change_date
-	,coalesce(calculated_eta, eta_date)::date																					_eta_auto_date
-	,coalesce(etd_wakeo_date, etd_date)::date																					_etd_auto_date
-	,coalesce(t.calculated_arrival::date, t.arrival_date::date)																		_arrival_date_auto 	
-	,s._LOB																												_LOB
-	,coalesce(s._analytical_carrier, a."Carrier Name",'NA')															_analytical_carrier 
+	,s._LOB
+	,coalesce(s._analytical_carrier, a."Carrier Name",'NA')																_analytical_carrier 
 	,s._analytical_coloader																								_analytical_coloader												
 	,b._booking_no																										_booking_no
 	,s._offer_serial																									_offer_serial
 	,s._fin_status																										_fin_status
-	,case when t.loading_date is null then 'Initialized'
-		else null
-	end 																												_initialized
 	,tl._public_tracking_link																							_public_tracking_link
-	,1::int																												_all		
-	,hbl._web_url																										_web_url_hbl
-	,mbl._web_url																										_web_url_mbl																								
-from portal.materialized_view_shipments_tracker_demo t
+--	,count(*) over()
+from portal.materialized_view_shipments_tracker t
 left join public.focus__contacts c 
 	on c."ID" = t.contact_id 
-left join portal.demo_companies cc 
-	on cc.ext_id = t.contact_id 
 left join (
 	-- join shipment WEB URL
 			select 
 				upper(trim(s."Serial No"))				_serial 
-				,s."URL to Shipment" 					_web_url
+				,s."URL to Shipment" 						_web_url
 				,s."Containers"							_containers
-				,s."Line Of Business"					_LOB
+				,s."Line Of Business"						_LOB
 				,s."Carrier / Shipping Line"				_analytical_carrier 
 				,s."Co-Loader"							_analytical_coloader
 				,"Offer Serial No"						_offer_serial
@@ -171,45 +157,8 @@ left join (
 			or (upper(split_part(t.service, '_', 1)) = 'LAND' and tl._container_id = t.serial_no)
 			or (tl._container_id = t.container_equipment_no)
 			)
--- join HBL public links
-left join (
-				select 
-					a."Parent ID"::text 								_id
-					,a.iss_domain 									_iss_dom
-					,a."Label" 
-					,'http://iss-track-trace.uaenorth.azurecontainer.io:50052/invoice/shp'
-						|| lower(split_part(a.iss_domain,'-',2)) || a."ID" 				_web_url
-				from public.focus__attachments a
-				where 1=1
-					and "Parent Type" = 'Shipment'
-					and "Shared With Customer"::int = 1
-					and "Label" = 'HBL'
-			) hbl 
-	on hbl._id = t."id"
-	and hbl._iss_dom = t.iss_domain
--- join MBL public links
-left join (
-				select 
-					a."Parent ID"::text 								_id
-					,a.iss_domain 									_iss_dom
-					,a."Label" 
-					,'http://iss-track-trace.uaenorth.azurecontainer.io:50052/invoice/shp'
-						|| lower(split_part(a.iss_domain,'-',2)) || a."ID" 				_web_url
-				from public.focus__attachments a
-				where 1=1
-					and "Parent Type" = 'Shipment'
-					and "Shared With Customer"::int = 1
-					and "Label" = 'MBL'
-			) mbl 
-	on mbl._id = t."id"
-	and mbl._iss_dom = t.iss_domain
 where 1=1
 	and t.creation_date >= '2025-05-01'
-	and (t.serial_no is not null and t.serial_no <> '')
-    and upper(split_part(t.operational_status,'_',2)) <> 'CANCELLED'
-    and coalesce(t.line_of_business,s._LOB) <> ''
-	and coalesce(t.line_of_business,s._LOB) is not null
-	and split_part(upper(coalesce(t.line_of_business, s._LOB)),' ',1) <> 'CONTRACT'
 	
 	
 	
@@ -218,19 +167,20 @@ $sql$
 
 
 
--- update repo
+
+
+
+
+--update repo
 update sql_source 
-set _code = current_setting('dev.tracker_client_demo')
+set _code = current_setting('dev.tracking_main_app')
 	,_updated = now() 
 where 1=1
-	and _report = 'TRACKER CLIENT DEMO'
+	and _report = 'TRACKER APP'
 	and _page = 'MAIN'
-
-
 	
-
-
-
-
-
-   
+	
+	
+	
+	
+	
