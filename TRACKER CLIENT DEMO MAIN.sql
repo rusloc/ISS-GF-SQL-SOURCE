@@ -60,7 +60,7 @@ select
 	,coalesce(etd_wakeo_date, etd_date)::date																					_etd_auto_date
 	,coalesce(t.calculated_arrival::date, t.arrival_date::date)																		_arrival_date_auto 	
 	,s._LOB																												_LOB
-	,coalesce(s._analytical_carrier, a."Carrier Name",'NA')															_analytical_carrier 
+	,coalesce(t.carrier, s._analytical_carrier, a."Carrier Name",'NA')															_analytical_carrier 
 	,s._analytical_coloader																								_analytical_coloader												
 	,b._booking_no																										_booking_no
 	,s._offer_serial																									_offer_serial

@@ -18,6 +18,7 @@ select
 	_serial
 	,_client
 	,_container
+	,_vessel
 	,_sku_main_link
 	,_iss_dom
 	,_origin_country
@@ -32,34 +33,35 @@ select
 	,_invoice_number
 	,encode(sha256((row_number() over (partition by _client, _serial)::text || coalesce(_sku_main_link::text,'na') || coalesce(_sku,'na'))::bytea),'hex') as _row_id
 from (
-	select 
-		distinct on (t.serial_no, t.contact_id, coalesce(t.container_equipment_no, 'NA'),pl_inner.val->> 'sku'	) 
-		t.serial_no 																														_serial
-		,coalesce(upper(cc."name"), upper(c."Name"))																						_client
-		,t.container_equipment_no 																										_container
-		,t.serial_no || '-' || t.contact_id || '-' || coalesce(t.container_equipment_no, 'NA') 											_sku_main_link
-		,t.iss_domain 																													_iss_dom
-		,t.origin_country																												_origin_country
-		,t.origin_port 																													_origin_port
-		,t.destination_country 																											_destination_country
-		,t.destination_port 																												_destination_port
-		,coalesce(t.actual_status, 'NA') 																								_actual_status
-		,pl_inner.val ->> 'sku'																											_sku
-		,pl_inner.val ->> 'quantity' 																									_qnty
-		,pl_inner.val ->> 'PO_Number' 																									_po_number_sku
-		,pl_inner.val ->> 'description' 																									_description
-		,pl_inner.val ->> 'invoice_number' 																								_invoice_number
-from portal.materialized_view_shipments_tracker_demo t
-left join focus__contacts c 
-	on c."ID" = t.contact_id
-left join portal.demo_companies cc 
-	on cc.ext_id = t.contact_id 
-left join lateral jsonb_array_elements(t.packing_list_details) as pl_outer(val) on true
-left join lateral json_array_elements((pl_outer.val ->> 'packing_list')::json) as pl_inner(val) on true
-where 1 = 1
-order by t.serial_no
-	,t.contact_id
-	,coalesce(t.container_equipment_no, 'NA')	
+				select 
+					distinct on (item.value ->> 'sku',container.value ->> 'serial_number',container.value ->> 'container_number' )
+					t.serial_no 																														_serial
+					,coalesce(upper(cc."name"), upper(c."Name"))																						_client
+				    ,container.value ->> 'container_number'  																							_container
+					,t.vessel																														_vessel
+				    ,t.serial_no || '-' || t.contact_id || '-' || coalesce(t.container_equipment_no,container.value ->> 'container_number', 'NA')		_sku_main_link
+					,t.iss_domain 																													_iss_dom
+					,t.origin_country																												_origin_country
+					,t.origin_port 																													_origin_port
+					,t.destination_country 																											_destination_country
+					,t.destination_port 																												_destination_port
+					,coalesce(t.actual_status, 'NA') 																								_actual_status
+				    ,item.value ->> 'sku'                    																							_sku
+				    ,item.value ->> 'quantity'               																							_qnty
+				    ,item.value ->> 'PO_Number'              																							_po_number_sku
+				    ,item.value ->> 'description'            																							_description
+				    ,item.value ->> 'invoice_number'         																							_invoice_number
+				from portal.materialized_view_shipments_tracker_demo t
+				left join focus__contacts c 
+					on c."ID" = t.contact_id
+				left join portal.demo_companies cc 
+					on cc.ext_id = t.contact_id
+				cross join lateral jsonb_array_elements(t.packing_list_details) container(value)
+				cross join lateral jsonb_array_elements(container.value -> 'packing_list') item(value)
+				order by
+				    item.value ->> 'sku'
+				    ,container.value ->> 'serial_number'
+				    ,container.value ->> 'container_number'	
 ) t
 
 	
