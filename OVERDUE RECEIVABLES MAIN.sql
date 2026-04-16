@@ -5,8 +5,14 @@
 set dev.receivables = 
 $sql$ 
 
+
+
 select 
 	c."Invoice" 																							_invoice
+	,c."Customer Account"  
+		|| '-' || c."Voucher" 
+		|| '-' || coalesce(c."Invoice",'NA')
+		|| '-' || coalesce(c."Last settlement voucher",'NA')												_main_link
 	,d._first_date																						_first_settlement_date
 	,d._last_date																						_last_settlement_date
 	,'https://' 
@@ -103,16 +109,21 @@ select
 	,c."Customer Account"																				_client
 	,c."Company" 																						_vendor
 	,c."Currency" 																						_currency
+-- numbers
 	,c."Amount in Transaction Currency"																	_invoice_amount_local
-	,c."Amount in Transaction Currency" * e."Exrate"														_invoice_amount_usd
 	,c."Settled Amount in Transaction Currency"															_settle_amount_local
-	,c."Settled Amount in Transaction Currency"	* e."Exrate"												_settle_amount_usd
+	,c."Amount in Reporting Currency" 																	_invoice_amount_orig_usd
+	,c."Settled Amount in Reporting Currency"															_settle_amount_orig_usd
+	,fx._fx_adjust																						_fx_adjust
+-- new calculation version: added auto cred notes; 
+	,c."Amount in Transaction Currency"
+		+ coalesce(mcn._cancel_amount_manual,0)															_net_invoice_amount_local_orig
+	,c."Amount in Reporting Currency"
+		+ coalesce(mcn._cancel_amount_manual_usd,0)														_net_invoice_amount_usd_orig
 	,mcn._cancel_amount_manual																			_credit_note_amount_local
-	,mcn._cancel_amount_manual * e."Exrate"																_credit_note_amount_usd
+-- used in report calculation (base version)
 	,c."Amount in Transaction Currency"	+ coalesce(mcn._cancel_amount_manual,0)							_net_invoice_amount_local
-	,(c."Amount in Transaction Currency" + coalesce(mcn._cancel_amount_manual,0)) * e."Exrate"				_net_invoice_amount_usd
 	,c."Settled Amount in Transaction Currency"	+ coalesce(mcn._cancel_amount_manual,0)					_net_settle_amount_local
-	,(c."Settled Amount in Transaction Currency" + coalesce(mcn._cancel_amount_manual,0)) * e."Exrate"		_net_settle_amount_usd
 -- shipment attrs
 	,coalesce(i._iss_domain, s._iss_dom, m._iss_dom, 'NA')												_iss_dom
 	,m._country																							_country
@@ -127,7 +138,7 @@ left join (
 							select 
 								"Company"														_company
 								,"Country Name"													_country
-								,max(iss_domain)												_iss_dom
+								,max(iss_domain)													_iss_dom
 							from public.analytical__dax_branch_iss_domain_mapping m 
 							group by 1,2
 			) m 
@@ -184,11 +195,6 @@ left join (
 --						and _iss_dom = 'ISS-IT'
 				) s 
 	on c."Invoice" = s._invoice
--- exchange rates
-left join public."dax__ExRateMaster_daily" e 
-	on e."FROMCURRENCY" = c."Currency"
-    and e."STARTDATE" = now()::date
-    and e."TOCURRENCY" = 'USD'
 -- join ISSUED INVOICES for ISS-DOM attr
 left join (
 						select 
@@ -214,6 +220,7 @@ left join (
 							,cn."Customer Account"																_customer_account_cn
 							,cn."Company"																		_company_cn
 							,cn."Amount in Transaction Currency"												_cancel_amount_manual
+							,cn."Amount in Reporting Currency"												_cancel_amount_manual_usd
 						from public.dax__customertransactions c 
 						left join (
 									-- credit notes issued to Vouchers
@@ -222,6 +229,7 @@ left join (
 												,"Customer Account"
 												,"Company"
 												,sum("Amount in Transaction Currency")							"Amount in Transaction Currency"
+												,sum("Amount in Reporting Currency")								"Amount in Reporting Currency"
 --												,count(*)
 											from public.dax__customertransactions
 											where 1=1
@@ -249,7 +257,8 @@ left join (
 							,cn._to_voucher																		_to_voucher
 							,cn."Customer Account"																_customer_account_cn
 							,cn."Company"																		_company_cn
-							,cn."Amount in Transaction Currency"												_cancel_amount_manual
+							,cn."Amount in Transaction Currency"												_cancel_amount_auto
+							,cn."Amount in Reporting Currency"												_cancel_amount_auto_usd
 						from public.dax__customertransactions c 
 						left join (
 									-- credit notes issued to Vouchers
@@ -258,6 +267,7 @@ left join (
 												,"Customer Account"
 												,"Company"
 												,sum("Amount in Transaction Currency")							"Amount in Transaction Currency"
+												,sum("Amount in Reporting Currency")								"Amount in Reporting Currency"
 --												,count(*)
 											from public.dax__customertransactions
 											where 1=1
@@ -279,6 +289,7 @@ left join (
 	on acn._original_inv = c."Invoice"
 	and acn._customer_account_cn = c."Customer Account"
 	and acn._company_cn = c."Company"
+-- first and last invoice dates (start of operations & end of operations)
 left join (
 						select 
 							coalesce(c."Invoice",c."Voucher")									_invoice
@@ -297,11 +308,29 @@ left join (
 	on d._invoice = c."Invoice"
 	and d._customer = c."Customer Account"
 	and d._company = c."Company"
+-- join foreign currency reevaluation numbers
+left join (
+						select 
+							"Customer Account"													_customer
+							,"Company"															_company
+							,coalesce("Invoice","Document Ref")									_invoice
+							,"Last settlement voucher"											_last_voucher
+							,sum("Amount in Reporting Currency")									_fx_adjust
+						from public.dax__customertransactions c
+						where 1=1
+							and c."Transaction Type" = 'Foreign currency revaluation'
+--							and coalesce("Invoice","Document Ref") =  'INVDEFRAAE23001367'
+						group by 1,2,3,4
+		) fx
+	on fx._customer = c."Customer Account"
+	and fx._company = c."Company"
+	and fx._last_voucher = c."Voucher"
 where 1=1
-	and c."Invoice" not ilike '%CN%'
+	and c."Invoice" not ilike '-CN-'
 	and c."Invoice" is not null
 	and c."Transaction Type" in ('General journal', 'Customer')
 	
+
 	
 $sql$
 
@@ -315,4 +344,60 @@ set _code = current_setting('dev.receivables')
 	,_updated = now() 
 where 1=1	
 	and _page = 'MAIN' 
-	and _report = 'OVERDUE RECEIVABLES';
+	and _report = 'OVERDUE RECEIVABLES'
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	with _main as (
+				select 
+					c."Customer Account" 													_client_account
+					,c."Customer Name"														_customer_name
+					,c."Company" 															_company
+				--	,string_agg(c."Transaction Type", ';')
+				from public.dax__customertransactions c
+				where 1=1
+				group by 1,2,3
+				having count(*) filter(where c."Transaction Type" in ('General journal', 'Customer', 'Foreign currency revaluation')) = 0
+		)
+select 
+	m._company
+	,m._client_account
+	,coalesce(upper(trim(m._customer_name)), con._customer_name)								_client_name
+	,coalesce(con._iss_dom, mn._iss_dom, 'NA')												_iss_dom
+	,upper(coalesce(con._acc_manager, 'NA'))													_acc_manager
+from _main m
+left join (
+						select 
+							c."Customer Accounting ID"										_customer_id
+							,c.iss_domain													_iss_dom
+							,max(c."Name")													_customer_name
+							,max(c."Account Manager Name")									_acc_manager
+						from public.focus__contacts c
+						where 1=1
+							and c.iss_domain !~* 'test'
+							and c."Creator ID" is not null
+						group by 1,2
+		) con 
+on con._customer_id = m._client_account
+left join (
+						select 
+							"Company"														_company
+							,"Country Name"													_country
+							,max(iss_domain)													_iss_dom
+						from public.analytical__dax_branch_iss_domain_mapping m 
+						group by 1,2
+			) mn 
+	on (mn._company = m._company)
+	
+	
+	
+	
+	
+	
