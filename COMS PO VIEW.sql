@@ -25,7 +25,12 @@
 
 -- set var: edit inline SQL source and run
 set dev.po_view = 
-$sql$ 
+--$sql$ 
+
+
+
+
+
 
 select 
 	-- ############################################################### Wrapper (final) block ###############################################################
@@ -1297,7 +1302,7 @@ from (
 																					    _sla_map
 																					    ,'$[*] ? (@.severity == $_col && @.exception == $_expt && @.mode == $_mode && @.port == $_port)'
 																					    ,jsonb_build_object(
-																					    						'_col','Green'
+																					    						'_col','Yellow'
 																					    						,'_expt', 'Customs Clearance & Delivery'
 																					    						,'_mode', initcap(split_part(_mode,'_',1))
 																					    						,'_port', _destination_port_code_dest)
@@ -1306,7 +1311,7 @@ from (
 																					    _sla_map
 																					    ,'$[*] ? (@.severity == $_col && @.exception == $_expt && @.mode == $_mode && @.port == $_port)'
 																					    ,jsonb_build_object(
-																					    						'_col','Green'
+																					    						'_col','Yellow'
 																					    						,'_expt', 'Customs Clearance & Delivery'
 																					    						,'_mode', initcap(split_part(_mode,'_',1))
 																					    						,'_port', _destination_port_code_dest)
@@ -1618,221 +1623,221 @@ where 1=1
 
 
 -- ####################################################### TRANSFERR DATA TO FABRIC FOR INTERACTIVE PO VIEW VERSION #################################################################
-
-
--- drop table for cleaning purposes
-drop table if exists public.coms_po_view_demo
-
-
-
-
-
--- create table to host query results
-create table public.coms_po_view_demo (
-  _line_type text
- ,_line_id text
- ,_line_no bigint
- ,_client_id bigint
- ,_client_name text
- ,_original_po_qty bigint
- ,_po_outer_qty numeric
- ,_shipped numeric
- ,_qnty_shipped_remaning numeric
- ,_inner_qnty_shipped numeric
- ,_balance_outer_qnty numeric
- ,_balance_inner_qnty numeric
- ,_freight_unit_id bigint
- ,_fo_id bigint
- ,_fo_serial text
- ,_shipment_link text
- ,_branch_bu text
- ,_supplier_code text
- ,_supplier_name text
- ,_po_no_ekporef text
- ,_po_remarks text
- ,_commodity text
- ,_po_type text
- ,_po_uom text
- ,_units_po_uom bigint
- ,_po_inner_qnty numeric
- ,_po_line_status text
- ,_item_code text
- ,_incoterms text
- ,_incoterms_desc text
- ,_pr_appr_date date
- ,_po_app_date date
- ,_po_creation_date date
- ,_po_recd_date date
- ,_po_need_by_date date
- ,_mode text
- ,_routed_by text
- ,_ship_remarks_updates text
- ,_ship_billing_remarks text
- ,_incoterms_fo text
- ,_shipment_serial_iss_job text
- ,_response_shipment_id text
- ,_inbound_iss_job_no text
- ,_outbound_iss_job_no text
- ,_hbl_hawb text
- ,_mbl_mawb text
- ,_container_no text
- ,_cbm numeric
- ,_gw numeric
- ,_chw numeric
- ,_qnty numeric
- ,_eqpt_type text
- ,_pack_type text
- ,_20_ft numeric
- ,_40_ft numeric
- ,_count_of_cont numeric
- ,_teus numeric
- ,_carrier text
- ,_arrival_date date
- ,_arrival_date_actual date
- ,_del date
- ,_departure_date date
- ,_departure_date_actual date
- ,_crd_actual date
- ,_crd_estimated date
- ,_crd date
- ,_goods_cleared_origin date
- ,_goods_cleared_destination date
- ,_pickup_date date
- ,_cargo_ho date
- ,_eta date
- ,_eta_simple date
- ,_revised_eta date
- ,_eta_wakeo date
- ,_full_eta date
- ,_etd date
- ,_etd_simple date
- ,_revised_etd date
- ,_etd_wakeo date
- ,_full_etd date
- ,_pta date
- ,_ptd date
- ,_first_edd_po date
- ,_current_edd_po date
- ,_first_edd_fo date
- ,_pod_date date
- ,_do_date date
- ,_do_exp date
- ,_pr_number text
- ,_pr_date date
- ,_req_status text
- ,_spo_number text
- ,_po_status text
- ,_grn_no text
- ,_grn_status text
- ,_addl_po text
- ,_addl_po_grn text
- ,_days_delayed_eta numeric
- ,_days_delayed_etd numeric
- ,_etd_2_eta numeric
- ,_eta_2_del numeric
- ,_nbd_2_del numeric
- ,_origin_port_pol text
- ,_delivery_location text
- ,_origin_port_name text
- ,_origin_country text
- ,_origin_region_org_reg text
- ,_destination_port_code_dest text
- ,_destination_port_name_dest text
- ,_destination_country_code_dest text
- ,_destination_country_dest text
- ,_destination_region_reg text
- ,_aux_charge_type text
- ,_aux_charge_form_no text
- ,_org_charges_aed numeric
- ,_dest_charges_aed numeric
- ,_frt_charges_aed numeric
- ,_aux_charges_aed numeric
- ,_p2p_value_aed numeric
- ,_total_charges_aed numeric
- ,_org_charges_usd numeric
- ,_dest_charges_usd numeric
- ,_frt_charges_usd numeric
- ,_aux_charges_usd numeric
- ,_p2p_value_usd numeric
- ,_total_charges_usd numeric
- ,_invoice_no text
- ,_invoice_issue_date date
- ,_addl_issued_invoices text
- ,_addl_invoice_issue_date date
- ,_customs_invoice_aed numeric
- ,_customs_invoice_usd numeric
- ,_billing_status text
- ,_days_order_placement_lt numeric
- ,_days_supplier_production_lt numeric
- ,_days_custom_clearance_lt numeric
- ,_days_iss_cont_booking_lt numeric
- ,_days_transit_lt numeric
- ,_e2e_total_lt numeric
- ,_supplier_lead_time numeric
- ,_country_lead_time numeric
- ,_ontime_order_placement_perf text
- ,_days_total_comm_perf numeric
- ,_ship_focus_status text
- ,_pre_alert text
- ,_dn text
- ,_current_edd_fo date
- ,_actual_lead numeric
- ,_health_check text
- ,_status text
- ,_e2e_total_lead_time_perf text
- ,_iss_cont_booking_perf text
- ,_supplier_committed_prod_rdy_perf text
- ,_iss_transit_lead_time_perf text
- ,_iss_custom_clear_perf text
- ,_rdd_eta int
- ,_crd_2_etd numeric
- ,_po_2_crd numeric
- ,_reason_code text
- ,_nbd_2_crd numeric
- ,_nbd_2_eta numeric
- ,_spo_invoice_val_aed numeric
- ,_avg_lt numeric
- ,_01_po_aknowledgment_expt text
- ,_02_po_pickup_departure_expt text
- ,_03_po_transit_expt text
- ,_04_po_custom_clear_expt text
- ,_05_po_delivery_expt text
- ,_master_line text
- ,_final_expected_del_date date
- ,_06_expt_status text
-);
+--
+--
+---- drop table for cleaning purposes
+--drop table if exists public.coms_po_view_demo
 
 
 
-
-
--- populate table with query results
-do 
-$$
-declare
-  _query text;
-begin
-  --assign SQL to var
-  _query := current_setting('dev.po_view', true);
-
-  -- check if null
-  if _query is null or _query = '' then
-    raise exception 'Variable dev.po_view is empty. Ensure the source code is set.';
-  end if;
-
-  -- replace default schema to portal_dev
-  _query := replace(_query, 'portal.', 'portal_dev.');
-
-  -- clean table
-  truncate table public.coms_po_view_demo;
-
-  -- insert
-  execute 'insert into public.coms_po_view_demo ' || _query;
-
-  -- run analyze
-  analyze public.coms_po_view_demo;
-
-  raise notice 'Table truncated and data population from adjusted dynamic source completed.';
-end;
-$$;
-
+--
+--
+---- create table to host query results
+--create table public.coms_po_view_demo (
+--  _line_type text
+-- ,_line_id text
+-- ,_line_no bigint
+-- ,_client_id bigint
+-- ,_client_name text
+-- ,_original_po_qty bigint
+-- ,_po_outer_qty numeric
+-- ,_shipped numeric
+-- ,_qnty_shipped_remaning numeric
+-- ,_inner_qnty_shipped numeric
+-- ,_balance_outer_qnty numeric
+-- ,_balance_inner_qnty numeric
+-- ,_freight_unit_id bigint
+-- ,_fo_id bigint
+-- ,_fo_serial text
+-- ,_shipment_link text
+-- ,_branch_bu text
+-- ,_supplier_code text
+-- ,_supplier_name text
+-- ,_po_no_ekporef text
+-- ,_po_remarks text
+-- ,_commodity text
+-- ,_po_type text
+-- ,_po_uom text
+-- ,_units_po_uom bigint
+-- ,_po_inner_qnty numeric
+-- ,_po_line_status text
+-- ,_item_code text
+-- ,_incoterms text
+-- ,_incoterms_desc text
+-- ,_pr_appr_date date
+-- ,_po_app_date date
+-- ,_po_creation_date date
+-- ,_po_recd_date date
+-- ,_po_need_by_date date
+-- ,_mode text
+-- ,_routed_by text
+-- ,_ship_remarks_updates text
+-- ,_ship_billing_remarks text
+-- ,_incoterms_fo text
+-- ,_shipment_serial_iss_job text
+-- ,_response_shipment_id text
+-- ,_inbound_iss_job_no text
+-- ,_outbound_iss_job_no text
+-- ,_hbl_hawb text
+-- ,_mbl_mawb text
+-- ,_container_no text
+-- ,_cbm numeric
+-- ,_gw numeric
+-- ,_chw numeric
+-- ,_qnty numeric
+-- ,_eqpt_type text
+-- ,_pack_type text
+-- ,_20_ft numeric
+-- ,_40_ft numeric
+-- ,_count_of_cont numeric
+-- ,_teus numeric
+-- ,_carrier text
+-- ,_arrival_date date
+-- ,_arrival_date_actual date
+-- ,_del date
+-- ,_departure_date date
+-- ,_departure_date_actual date
+-- ,_crd_actual date
+-- ,_crd_estimated date
+-- ,_crd date
+-- ,_goods_cleared_origin date
+-- ,_goods_cleared_destination date
+-- ,_pickup_date date
+-- ,_cargo_ho date
+-- ,_eta date
+-- ,_eta_simple date
+-- ,_revised_eta date
+-- ,_eta_wakeo date
+-- ,_full_eta date
+-- ,_etd date
+-- ,_etd_simple date
+-- ,_revised_etd date
+-- ,_etd_wakeo date
+-- ,_full_etd date
+-- ,_pta date
+-- ,_ptd date
+-- ,_first_edd_po date
+-- ,_current_edd_po date
+-- ,_first_edd_fo date
+-- ,_pod_date date
+-- ,_do_date date
+-- ,_do_exp date
+-- ,_pr_number text
+-- ,_pr_date date
+-- ,_req_status text
+-- ,_spo_number text
+-- ,_po_status text
+-- ,_grn_no text
+-- ,_grn_status text
+-- ,_addl_po text
+-- ,_addl_po_grn text
+-- ,_days_delayed_eta numeric
+-- ,_days_delayed_etd numeric
+-- ,_etd_2_eta numeric
+-- ,_eta_2_del numeric
+-- ,_nbd_2_del numeric
+-- ,_origin_port_pol text
+-- ,_delivery_location text
+-- ,_origin_port_name text
+-- ,_origin_country text
+-- ,_origin_region_org_reg text
+-- ,_destination_port_code_dest text
+-- ,_destination_port_name_dest text
+-- ,_destination_country_code_dest text
+-- ,_destination_country_dest text
+-- ,_destination_region_reg text
+-- ,_aux_charge_type text
+-- ,_aux_charge_form_no text
+-- ,_org_charges_aed numeric
+-- ,_dest_charges_aed numeric
+-- ,_frt_charges_aed numeric
+-- ,_aux_charges_aed numeric
+-- ,_p2p_value_aed numeric
+-- ,_total_charges_aed numeric
+-- ,_org_charges_usd numeric
+-- ,_dest_charges_usd numeric
+-- ,_frt_charges_usd numeric
+-- ,_aux_charges_usd numeric
+-- ,_p2p_value_usd numeric
+-- ,_total_charges_usd numeric
+-- ,_invoice_no text
+-- ,_invoice_issue_date date
+-- ,_addl_issued_invoices text
+-- ,_addl_invoice_issue_date date
+-- ,_customs_invoice_aed numeric
+-- ,_customs_invoice_usd numeric
+-- ,_billing_status text
+-- ,_days_order_placement_lt numeric
+-- ,_days_supplier_production_lt numeric
+-- ,_days_custom_clearance_lt numeric
+-- ,_days_iss_cont_booking_lt numeric
+-- ,_days_transit_lt numeric
+-- ,_e2e_total_lt numeric
+-- ,_supplier_lead_time numeric
+-- ,_country_lead_time numeric
+-- ,_ontime_order_placement_perf text
+-- ,_days_total_comm_perf numeric
+-- ,_ship_focus_status text
+-- ,_pre_alert text
+-- ,_dn text
+-- ,_current_edd_fo date
+-- ,_actual_lead numeric
+-- ,_health_check text
+-- ,_status text
+-- ,_e2e_total_lead_time_perf text
+-- ,_iss_cont_booking_perf text
+-- ,_supplier_committed_prod_rdy_perf text
+-- ,_iss_transit_lead_time_perf text
+-- ,_iss_custom_clear_perf text
+-- ,_rdd_eta int
+-- ,_crd_2_etd numeric
+-- ,_po_2_crd numeric
+-- ,_reason_code text
+-- ,_nbd_2_crd numeric
+-- ,_nbd_2_eta numeric
+-- ,_spo_invoice_val_aed numeric
+-- ,_avg_lt numeric
+-- ,_01_po_aknowledgment_expt text
+-- ,_02_po_pickup_departure_expt text
+-- ,_03_po_transit_expt text
+-- ,_04_po_custom_clear_expt text
+-- ,_05_po_delivery_expt text
+-- ,_master_line text
+-- ,_final_expected_del_date date
+-- ,_06_expt_status text
+--);
+--
+--
+--
+--
+--
+---- populate table with query results
+--do 
+--$$
+--declare
+--  _query text;
+--begin
+--  --assign SQL to var
+--  _query := current_setting('dev.po_view', true);
+--
+--  -- check if null
+--  if _query is null or _query = '' then
+--    raise exception 'Variable dev.po_view is empty. Ensure the source code is set.';
+--  end if;
+--
+--  -- replace default schema to portal_dev
+--  _query := replace(_query, 'portal.', 'portal_dev.');
+--
+--  -- clean table
+--  truncate table public.coms_po_view_demo;
+--
+--  -- insert
+--  execute 'insert into public.coms_po_view_demo ' || _query;
+--
+--  -- run analyze
+--  analyze public.coms_po_view_demo;
+--
+--  raise notice 'Table truncated and data population from adjusted dynamic source completed.';
+--end;
+--$$;
+--
