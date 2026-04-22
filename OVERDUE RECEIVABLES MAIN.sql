@@ -11,45 +11,49 @@ $sql$
 
 /*
 	Logic: three blocks	
-		> 1. main simple invoices with attached cred. notes
-		> 2. Clients with payments only
-		> 3. Transactions without invoices aka "other operations"
+		> BLOCK 1: main simple invoices with attached cred. notes 
+		> BLOCK 2: Clients with payments only
+		> BLOCK 3: Transactions without invoices aka "other operations" 
+		> BLOCK 4: 
 */
 
 
+
+
+--############################################################### BLOCK 1 ###############################################################
 select 
-	c."Invoice" 																							_invoice
+	c."Invoice" 																														_invoice
 	,c."Customer Account"  
-		|| '-' || c."Company"																			_main_link
-	,d._first_date																						_first_settlement_date
-	,d._last_date																						_last_settlement_date
+		|| '-' || c."Company"																										_main_link
+	,min("Voucher Date"::date) over(partition by c."Customer Account"	,c."Company")													_first_settlement_date
+	,max("Voucher Date"::date) over(partition by c."Customer Account"	,c."Company")													_last_settlement_date
 	,'https://' 
 		|| coalesce(i._iss_domain, s._iss_dom, m._iss_dom, 'NA')
 		|| '.logistaas.com/invoices/'
 		|| i._id
-		|| '/'																							_invoice_web_link
-	,coalesce(i._due_date::date, c."Due Date of Invoice"::date, null)										_invoice_due_date
-	,c."Last settlement"::date																			_last_payment_date
-	,c."Voucher" 																						_voucher
-	,c."Voucher Date"::date																				_voucher_date
-	,coalesce(i._issue_date::date, c."Posted Date"::date, c."Voucher Date"::date, null)					_doc_date
-	,count(*) over(partition by c."Invoice" ) 															_rows
+		|| '/'																														_invoice_web_link
+	,coalesce(i._due_date::date, c."Due Date of Invoice"::date, null)																	_invoice_due_date
+	,c."Last settlement"::date																										_last_payment_date
+	,c."Voucher" 																													_voucher
+	,c."Voucher Date"::date																											_voucher_date
+	,coalesce(i._issue_date::date, c."Voucher Date"::date , c."Posted Date"::date, null)												_doc_date
+	,count(*) over(partition by c."Invoice" ) 																						_rows
 	,case 
 		when s._ship_count > 1
 			then 'MULTIPLE'
 		else 'SINGLE'						
-	end																									_has_multi_ships
-	,s._shipments																						_ship_ids_agg
-	,s._ship_count																						_ship_count
+	end																																_has_multi_ships
+	,s._shipments																													_ship_ids_agg
+	,s._ship_count																													_ship_count
 	,case 
 		when length(c."Customer Account") <= 4 and length(c."Company") <= 4
 			then 'INTERCOMPANY'
 		else 'EXTERNAL'
-	end																									_intercompany
+	end																																_intercompany
 	,case 	
 		when s._invoice is not null then 'HAS SHIP.'
 		else 'NO SHIP.'
-	end																									_has_shipment
+	end																																_has_shipment
 	,case 
 		when now()::date - c."Voucher Date"::date between 0 and 30
 			then '0-30'
@@ -62,7 +66,7 @@ select
 		when now()::date - c."Voucher Date"::date  between 121 and 180
 			then '121-180'
 		else 'over 180'
-	end																									_aging_inv_date
+	end																																_aging_inv_date
 	,case 
 		when now()::date - coalesce(i._due_date::date, c."Due Date of Invoice"::date, null)::date = 0
 			then '0-00'
@@ -81,14 +85,14 @@ select
 		when now()::date - coalesce(i._due_date::date, c."Due Date of Invoice"::date, null)::date < 0 
 			then 'Not reached'
 		else 'over 360'
-	end																									_aging_due_date
+	end																																_aging_due_date
 	,case
 		when (now()::date - coalesce(i._due_date::date, c."Due Date of Invoice"::date, null)::date) between 0 and 30 
 			then (now()::date - coalesce(i._due_date::date, c."Due Date of Invoice"::date, null)::date)
-		else 31 end																						_due_date_tolerance
+		else 31 end																													_due_date_tolerance
 	,case
 		when mcn._original_inv is not null
-			and c."Amount in Transaction Currency"	+ mcn._cancel_amount_manual = 0
+			and c."Amount in Transaction Currency" + mcn._cancel_amount_manual_local = 0
 		then 'CANCELLED'
 		when c."Amount in Transaction Currency" = c."Settled Amount in Transaction Currency"
 			and c."Amount in Transaction Currency" <> 0
@@ -97,50 +101,48 @@ select
 			and c."Amount in Transaction Currency" > 0
 			and c."Amount in Transaction Currency" > c."Settled Amount in Transaction Currency"
 		then 'PARTIALLY SETTLED'
-		else 'UNSETTLED' end 																			_is_settled
+		else 'UNSETTLED' end 																										_is_settled
 	,sum(case 
 			when c."Amount in Transaction Currency" < 0
 				then c."Amount in Transaction Currency"
-			else 0 end) over(partition by c."Invoice")													_has_negative_amount
+			else 0 end) over(partition by c."Invoice")																				_has_negative_amount
 	,case 
-		when coalesce(mcn._original_inv,acn._original_inv) is not null 
+		when mcn._original_inv is not null 
 			then 'HAS CN'
 		else 'NO CN'
-	end																									_has_credit_note
+	end																																_has_credit_note
 	,case 
 		when c."Voucher" ilike '%LOG%'
 			then 'AUTO'
 		else 'MANUAL'
-	end																									_doc_source
-	,upper(c."Transaction Type")																			_tx_type
-	,coalesce(upper(trim(c."Customer Name")), con._customer_name)											_client_name
-	,c."Customer Account"																				_client
-	,c."Company" 																						_vendor
-	,c."Currency" 																						_currency
+	end																																_doc_source
+	,upper(c."Transaction Type")																										_tx_type
+	,coalesce(upper(trim(c."Customer Name")), con._customer_name)																		_client_name
+	,c."Customer Account"																											_client
+	,c."Company" 																													_vendor
+	,c."Currency" 																													_currency
 -- numbers
-	,c."Amount in Transaction Currency"																	_invoice_amount_local
-	,c."Settled Amount in Transaction Currency"															_settle_amount_local
-	,c."Amount in Reporting Currency" 																	_invoice_amount_orig_usd
-	,c."Settled Amount in Reporting Currency"															_settle_amount_orig_usd
-	,fx._fx_adjust																						_fx_adjust
+	,c."Amount in Transaction Currency"																								_invoice_amount_local
+	,c."Settled Amount in Transaction Currency"																						_settle_amount_local
+	,c."Amount in Reporting Currency" 																								_invoice_amount_orig_usd
+	,c."Settled Amount in Reporting Currency"																						_settle_amount_orig_usd
+	,fx._fx_adjust																													_fx_adjust
 -- new calculation version: added auto cred notes; 
-	,c."Amount in Transaction Currency"																	_net_invoice_amount_local_orig
-	,c."Amount in Reporting Currency"																	_net_invoice_amount_usd_orig
-	,mcn._cancel_amount_manual																			_credit_note_amount_local
--- used in report calculation (base version)
-	,c."Amount in Transaction Currency"																	_net_invoice_amount_local
-	,c."Settled Amount in Transaction Currency"															_net_settle_amount_local
+	,c."Amount in Transaction Currency" - coalesce(mcn._cancel_amount_manual_local,0)													_net_invoice_amount_local_orig
+	,c."Amount in Reporting Currency" - coalesce(mcn._cancel_amount_manual_usd,0)														_net_invoice_amount_usd_orig
+	,mcn._cancel_amount_manual_local																									_credit_note_amount_local
+	,mcn._cancel_amount_manual_usd																									_credit_note_amount_usd
 -- shipment attrs
-	,coalesce(i._iss_domain, s._iss_dom, m._iss_dom, 'NA')												_iss_dom
-	,m._country																							_country
-	,coalesce(s._lob,'NA')																				_lob_ship
-	,coalesce(s._service_type,'NA')																		_service_type_ship
-	,coalesce(con._acc_manager, s._acc_manager,'NA')														_acc_manager
-	,coalesce(s._sales_user,'NA')																		_sales_user_ship
-	,coalesce(s._doc_user,'NA')																			_doc_user_ship
-	,coalesce(s._oper_user,'NA')																			_oper_user_ship
-	,'INVOICE'																							_line_type
-	,left(c."Description",25)																			_desc
+	,coalesce(i._iss_domain, s._iss_dom, m._iss_dom, 'NA')																			_iss_dom
+	,m._country																														_country
+	,coalesce(s._lob,'NA')																											_lob_ship
+	,coalesce(s._service_type,'NA')																									_service_type_ship
+	,coalesce(con._acc_manager, s._acc_manager,'NA')																					_acc_manager
+	,coalesce(s._sales_user,'NA')																									_sales_user_ship
+	,coalesce(s._doc_user,'NA')																										_doc_user_ship
+	,coalesce(s._oper_user,'NA')																										_oper_user_ship
+	,'block 1 - INVOICE'																												_line_type
+	,left(c."Description",25)																										_desc
 from public.dax__customertransactions c
 left join (
 							select 
@@ -163,7 +165,7 @@ left join (
 -- shipments attrs
 left join (
 					select 
-				-- additional subquery wrapper: needed to pad Italian invoices' numbers
+				-- additional subquery wrapper: needed to pad Italian invoices' numbers (they have non standard format)
 						case 
 							when _iss_dom = 'ISS-IT'
 								then split_part(t._invoice,'-',1) || '-' || lpad(split_part(t._invoice,'-',2),6,'0')
@@ -224,11 +226,11 @@ left join (
 -- left join Credit Notes (CN) only to MANUAL INVOICES
 left join (
 						select 
-							c."Invoice" 																		_original_inv
+							c."Invoice" 																			_original_inv
 							,cn."Customer Account"																_customer_account_cn
 							,cn."Company"																		_company_cn
-							,cn."Amount in Transaction Currency"												_cancel_amount_manual
-							,cn."Amount in Reporting Currency"												_cancel_amount_manual_usd
+							,_amt_tx_cur																			_cancel_amount_manual_local
+							,_amt_rep_cur																		_cancel_amount_manual_usd
 						from public.dax__customertransactions c 
 						left join (
 									-- credit notes issued to Vouchers
@@ -236,15 +238,14 @@ left join (
 												"Last settlement voucher"										_to_voucher
 												,"Customer Account"
 												,"Company"
-												,sum("Amount in Transaction Currency")							"Amount in Transaction Currency"
-												,sum("Amount in Reporting Currency")								"Amount in Reporting Currency"
+												,sum("Amount in Transaction Currency")							_amt_tx_cur
+												,sum("Amount in Reporting Currency")								_amt_rep_cur
 --												,count(*)
 											from public.dax__customertransactions
 											where 1=1
-												and "Invoice" ilike '%CN%'
+												and "Invoice" ilike '-CN-'
 												and "Last settlement voucher" is not null 
 												and upper("Transaction Type") = 'CUSTOMER'
-					--							and "Last settlement voucher" = 'AEO1-FTV-000001614'
 											group by 1,2,3
 									) cn 
 							on cn._to_voucher = c."Voucher"
@@ -258,64 +259,6 @@ left join (
 	on mcn._original_inv = c."Invoice"
 	and mcn._customer_account_cn = c."Customer Account"
 	and mcn._company_cn = c."Company"
--- join Cn to autogenerated inv (ilike '%LOG%')
-left join (
-						select 
-							c."Invoice" 																		_original_inv
-							,cn._to_voucher																		_to_voucher
-							,cn."Customer Account"																_customer_account_cn
-							,cn."Company"																		_company_cn
-							,cn."Amount in Transaction Currency"												_cancel_amount_auto
-							,cn."Amount in Reporting Currency"												_cancel_amount_auto_usd
-						from public.dax__customertransactions c 
-						left join (
-									-- credit notes issued to Vouchers
-											select 
-												"Last settlement voucher"										_to_voucher
-												,"Customer Account"
-												,"Company"
-												,sum("Amount in Transaction Currency")							"Amount in Transaction Currency"
-												,sum("Amount in Reporting Currency")								"Amount in Reporting Currency"
---												,count(*)
-											from public.dax__customertransactions
-											where 1=1
-												and "Invoice" ilike '%CN%'
-												and "Invoice" is not null
-												and "Last settlement voucher" is not null 
-												and upper("Transaction Type") = 'GENERAL JOURNAL'
-											group by 1,2,3
-									) cn 
-							on cn._to_voucher = c."Voucher"
-							and cn."Customer Account" = c."Customer Account" 
-							and cn."Company" = c."Company" 
-						where 1=1
-							and upper(c."Transaction Type") = 'GENERAL JOURNAL'
-							and c."Invoice" is not null
-							and c."Voucher" ilike '%LOG%'
-							and cn._to_voucher is not null	
-				) acn
-	on acn._original_inv = c."Invoice"
-	and acn._customer_account_cn = c."Customer Account"
-	and acn._company_cn = c."Company"
--- first and last invoice dates (start of operations & end of operations)
-left join (
-						select 
-							coalesce(c."Invoice",c."Voucher")									_invoice
-							,"Customer Account"													_customer
-							,"Company"															_company
---							,((regexp_match(lower("Description"),'rev' )) @> '{rev}')::int
-							,min("Voucher Date")::date											_first_date
-							,max("Voucher Date")::date											_last_date
-						from public.dax__customertransactions c
-						where 1=1
-							and "Transaction Type" = 'Settlement'
---							and ((regexp_match(lower("Description"),'rev' )) @> '{rev}')::int is null
-							and "Description" <> 'Reverse:'
-						group by 1,2,3
-			) d 
-	on d._invoice = c."Invoice"
-	and d._customer = c."Customer Account"
-	and d._company = c."Company"
 -- join foreign currency reevaluation numbers
 left join (
 						select 
@@ -327,6 +270,7 @@ left join (
 						from public.dax__customertransactions c
 						where 1=1
 							and c."Transaction Type" = 'Foreign currency revaluation'
+							and c."Record-ID" <> 5641282801
 						group by 1,2,3,4
 		) fx
 	on fx._customer = c."Customer Account"
@@ -336,13 +280,14 @@ where 1=1
 	and c."Invoice" not ilike '-CN-'
 	and c."Invoice" is not null
 	and c."Transaction Type" in ('General journal', 'Customer')
+-- ############################################################### BLOCK 2 TWO ###############################################################
+-- add clients with payments only (without invoices)
 union all
--- add clients with payments only (without invoices) ##############################################################################################################
 (with _main as (
 						select 
-							c."Customer Account" 													_client_account
-							,c."Customer Name"														_customer_name
-							,c."Company" 															_company
+							c."Customer Account" 																				_client_account
+							,c."Customer Name"																					_customer_name
+							,c."Company" 																						_company
 						from public.dax__customertransactions c
 						where 1=1
 						group by 1,2,3
@@ -389,9 +334,8 @@ select
 	,0
 	,0
 	,0
-	,0
-	,0
-	,0
+	,0																						_credit_note_amount_local
+	,0 																						_credit_note_amount_usd
 	,coalesce(con._iss_dom, mn._iss_dom, 'NA')												_iss_dom
 	,mn._country																				_country
 	,null
@@ -400,7 +344,7 @@ select
 	,null
 	,null
 	,null
-	,'PAYMENTS ONLY'																			_line_type
+	,'block 2 - PAYMENTS ONLY'																_line_type
 	,'NA'																					_desc
 from _main m
 left join (
@@ -426,8 +370,9 @@ left join (
 			) mn 
 	on (mn._company = m._company)
 )
-union all
--- add GLJ operations with NULL invoice and positive amount ##################################################################################################
+--############################################################### BLOCK 3 ###############################################################
+-- add GLJ operations with NULL invoice and positive amount
+union all 
 select 
 	c."Voucher"																				_invoice
 	,c."Customer Account"  
@@ -438,7 +383,7 @@ select
 	,null
 	,null
 	,null
-	,c."Voucher Date"::date																_voucher_date
+	,c."Voucher Date"::date																	_voucher_date
 	,null
 	,null
 	,null
@@ -471,7 +416,6 @@ select
 	,c."Amount in Reporting Currency" - coalesce(fx._fx_adjust,0)								_net_invoice_amount_usd_orig
 	,0
 	,0
-	,0
 	,coalesce(con._iss_dom, mn._iss_dom, 'NA')												_iss_dom
 	,mn._country																				_country
 	,null
@@ -480,7 +424,7 @@ select
 	,null
 	,null
 	,null
-	,'INVOICE NULL ONLY'																		_line_type
+	,'block 3'																				_line_type
 	,left(c."Description",25)																_desc
 from public.dax__customertransactions c
 left join (
@@ -520,33 +464,115 @@ left join (
 	on fx._customer = c."Customer Account"
 	and fx._company = c."Company"
 	and fx._last_voucher = c."Voucher"
--- add cancelation docs
---left join (
---						select 
---							"Customer Account"													_customer
---							,"Company"															_company
---							,"Last settlement voucher"											_last_voucher
---							,sum(coalesce("Amount in Reporting Currency",0.00))					_amt_rep
---							,sum(coalesce("Amount in Transaction Currency",0.00))					_amt_trans
---						from public.dax__customertransactions c
---						where 1=1
---							and c."Invoice" is null
---							and c."Transaction Type" = 'General journal'
---							and c."Amount in Transaction Currency" < 0
---							and length(c."Customer Account") > 4 
---							and c."Company" = 'DEO1'
---						group by 1,2,3
---		) ac 
---	on ac._customer = c."Customer Account"
---	and ac._company = c."Company"
---	and ac._last_voucher = c."Voucher"
 where 1=1
 	and c."Invoice" is null
 	and c."Transaction Type" = 'General journal'
 	and c."Amount in Transaction Currency" > 0
 	and length(c."Customer Account") > 4 
-	and c."Company" = 'DEO1'
-	 
+--	and c."Company" = 'DEO1'
+--############################################################### BLOCK 4 ###############################################################
+-- add GLJ operations with NULL INVOICE and Transaction amount (not zero) & Settle amount (not zero) aka brought/forwarded amounts via GLJ
+union all 
+select 
+	c."Voucher"																				_invoice
+	,c."Customer Account"  
+		|| '-' || c."Company" 																_main_link
+	,null
+	,null
+	,null
+	,null
+	,null
+	,null
+	,c."Voucher Date"::date																	_voucher_date
+	,null
+	,null
+	,null
+	,null
+	,null
+	,case 
+		when length(c."Customer Account") <= 4 and length(c."Company"	) <= 4
+			then 'INTERCOMPANY'
+		else 'EXTERNAL'
+	end																						_intercompany
+	,null
+	,null
+	,'0-00'																					_aging_due_date
+	,0																						_due_date_tolerance												
+	,'NA'																					_is_settled
+	,null
+	,null
+	,null
+	,null
+	,coalesce(upper(trim(c."Customer Name")), con._customer_name)								_client_name
+	,c."Customer Account"																	_client
+	,c."Company"																				_vendor
+	,c."Currency"																			_currency
+	,c."Amount in Transaction Currency"														_invoice_amount_local
+	,c."Settled Amount in Transaction Currency"												_settle_amount_local
+	,c."Amount in Reporting Currency" - fx._fx_adjust											_invoice_amount_orig_usd
+	,c."Settled Amount in Reporting Currency"												_settle_amount_orig_usd
+	,0			 																			_fx_adjust
+	,c."Amount in Transaction Currency" 														_net_invoice_amount_local_orig
+	,c."Amount in Reporting Currency" - coalesce(fx._fx_adjust,0)								_net_invoice_amount_usd_orig
+	,0
+	,0
+	,coalesce(con._iss_dom, mn._iss_dom, 'NA')												_iss_dom
+	,mn._country																				_country
+	,null
+	,null
+	,upper(coalesce(con._acc_manager, 'NA'))													_acc_manager
+	,null
+	,null
+	,null
+	,'block 4'																				_line_type
+	,left(c."Description",25)																_desc
+from public.dax__customertransactions c
+left join (
+						select 
+							c."Customer Accounting ID"										_customer_id
+							,c.iss_domain													_iss_dom
+							,max(c."Name")													_customer_name
+							,max(c."Account Manager Name")									_acc_manager
+						from public.focus__contacts c
+						where 1=1
+							and c.iss_domain !~* 'test'
+							and c."Creator ID" is not null
+						group by 1,2
+			) con 
+	on con._customer_id = c."Customer Account"
+left join (
+						select 
+							"Company"														_company
+							,"Country Name"													_country
+							,max(iss_domain)													_iss_dom
+						from public.analytical__dax_branch_iss_domain_mapping m 
+						group by 1,2
+			) mn 
+	on mn._company = c."Company"
+left join (
+						select 
+							"Customer Account"													_customer
+							,"Company"															_company
+							,coalesce("Invoice","Document Ref")									_invoice
+							,"Last settlement voucher"											_last_voucher
+							,sum("Amount in Reporting Currency")	* (-1)							_fx_adjust
+						from public.dax__customertransactions c
+						where 1=1
+							and c."Transaction Type" = 'Foreign currency revaluation'
+						group by 1,2,3,4
+		) fx
+	on fx._customer = c."Customer Account"
+	and fx._company = c."Company"
+	and fx._last_voucher = c."Voucher"
+where 1=1
+	and c."Invoice" is null
+	and c."Transaction Type" = 'General journal'
+	and c."Amount in Transaction Currency" < 0
+	and c."Settled Amount in Transaction Currency" < 0
+	and length(c."Customer Account") > 4 
+--	and c."Company" = 'DEO1'
+
+
 
 
 $sql$
