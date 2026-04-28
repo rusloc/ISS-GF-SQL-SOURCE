@@ -13,8 +13,8 @@ $sql$
 	Logic: three blocks	
 		> BLOCK 1: main simple invoices with attached cred. notes 
 		> BLOCK 2: Clients with payments only
-		> BLOCK 3: Transactions without invoices aka "other operations" 
-		> BLOCK 4: 
+		> BLOCK 3: Transactions without invoices aka "other operations" (invoice is NULL & tx amount  > 0)
+		> BLOCK 4: other GLJ operations with tx & settle amt < 0 & null invoice
 */
 
 

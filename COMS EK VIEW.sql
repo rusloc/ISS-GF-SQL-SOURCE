@@ -18,6 +18,9 @@
 set dev.ek_view = 
 $sql$ 
 
+
+
+
     with pre_calc as (
 				select
 					p."ship_to_location" 																			_branch_bu
@@ -550,6 +553,7 @@ $sql$
   					,costs._ship_focus_status																						_ship_focus_status
   		-- sort attr used to select primary POs and secondary POs and place them in one line
 					,row_number() over(partition by f.id order by p.current_po_promised_dt)											_sort
+					,first_value(p.po_no) over(partition by f.id order by p.current_po_promised_dt) 									_primary_po
 				from portal."PurchaseOrderLine" p
 		-- many to many rel
 				inner join (
@@ -920,7 +924,7 @@ $sql$
 						then 'Pending'
 				when (_shipment_serial_iss_job <> '' or _shipment_serial_iss_job is not null)
 					and coalesce(_arrival_date_actual, _arrival_date) <= now()::date
-					and coalesce(_departure_date_actual, _departure_date) <= now()::date
+--					and coalesce(_departure_date_actual, _departure_date) <= now()::date
 					and _del <= now()::date
 						then 'Delivered'
 				when (_shipment_serial_iss_job <> '' or _shipment_serial_iss_job is not null)
@@ -1056,7 +1060,8 @@ select
 	,max(m._supplier_name) filter(where _sort = 1)										_supplier_name
 	,max(_po_no_EKPOREF) filter(where _sort = 1)											_po_no_ekporef
 	,null																				_item_code
-	,string_agg(distinct(_po_no_EKPOREF), ' | ') filter(where _sort <> 1)					_secondary_po
+	,string_agg(distinct(_po_no_EKPOREF), ' | ') 
+		filter(where _sort <> 1 and _po_no_EKPOREF is distinct from _primary_po)			_secondary_po
 	,string_agg(distinct(m._po_remarks), ' | ')											_po_remarks
 	,string_agg(distinct(m._commodity), ' | ')											_commodity
 	,max(_iss_ref)																		_iss_ref

@@ -1,6 +1,5 @@
 
 
-
 set dev.operations_geo_rls = 
 $sql$ 
 

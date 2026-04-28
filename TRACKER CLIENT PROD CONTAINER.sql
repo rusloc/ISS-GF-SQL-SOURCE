@@ -16,7 +16,9 @@ $sql$
  	
 select 
 	t.serial_no 
+	,c.creation_date
 	,t.id												_shipment_id
+	,c._client_id
 	,t.service 
 	,c._container
 	,c._volume
@@ -32,6 +34,8 @@ from portal.materialized_view_shipments_tracker t
 left join (
 			select 
 				t.serial_no 
+				,t.creation_date::date	
+				,t.contact_id								_client_id
 				,t.iss_domain 
 				,i ->> 'equipment_no'						_container
 				,i ->> 'volume'								_volume

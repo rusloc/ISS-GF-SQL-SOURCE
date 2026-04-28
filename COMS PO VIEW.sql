@@ -583,9 +583,9 @@ from (
 					,_org_charges_usd + _frt_charges_usd + _dest_charges_usd + _aux_charges_usd										_total_charges_usd
 		-- invoices
 					,costs._issued_invoices																							_invoice_no
-				    ,costs._issue_date::date																							_invoice_issue_date
-				    ,costs._addl_issued_invoices																						_addl_issued_invoices
-				    ,costs._addl_issue_date::date																					_addl_invoice_issue_date
+				    ,costs._issue_date																								_invoice_issue_date
+				    ,costs._addl_issued_invoices::text																				_addl_issued_invoices
+				    ,costs._addl_issue_date::text																					_addl_invoice_issue_date
 				    	,cv._amount_aed																									_customs_invoice_aed
 					,cv._amount_usd																									_customs_invoice_usd
 				    ,case 
@@ -910,6 +910,7 @@ from (
 				 IMPORTANT: sla limits joined as "flat table packed into single JSON object" 
 							* keeps all data inside JSON object
 							* removes duplications when joined
+							* later in code (~ 1187 line) data is extracted from the object
 			*/
 				left join lateral (
 									select 
@@ -1054,7 +1055,7 @@ from (
 												then 'Pending'
 										when (_shipment_serial_iss_job <> '' or _shipment_serial_iss_job is not null)
 											and coalesce(_arrival_date_actual, _arrival_date) <= now()::date
-											and coalesce(_departure_date_actual, _departure_date) <= now()::date
+--											and coalesce(_departure_date_actual, _departure_date) <= now()::date
 											and _del <= now()::date
 												then 'Delivered'
 										when (_shipment_serial_iss_job <> '' or _shipment_serial_iss_job is not null)
@@ -1522,9 +1523,9 @@ from (
 								,null::numeric																					_total_charges_usd
 			-- invoices
 								,null::text																						_invoice_no
-								,null::date																						_invoice_issue_date
+								,null::text																						_invoice_issue_date
 								,null::text																						_addl_issued_invoices
-								,null::date																						_addl_invoice_issue_date
+								,null::text																						_addl_invoice_issue_date
 								,null::numeric																					_customs_invoice_aed
 								,null::numeric																					_customs_invoice_usd
 								,null::text																						_billing_status
@@ -1600,8 +1601,9 @@ from (
 --					and rem._qnty_shipped_remaning > 0 
 	) m 
 where 1=1
---	and _po_no_ekporef = '624000447-1'
---	and _fo_serial= 'EMA000022'
+--	and _po_no_ekporef = 'DXBSI26006050'
+--	and _fo_serial= 'EKTR0023'
+	and _shipment_serial_iss_job = 'DXBSI26006050'
 	
 	
 

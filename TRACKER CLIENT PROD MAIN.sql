@@ -68,7 +68,13 @@ $sql$
 	,tl._public_tracking_link																							_public_tracking_link
 	,1::int																												_all		
 	,hbl._web_url																										_web_url_hbl
-	,mbl._web_url																										_web_url_mbl																								
+	,mbl._web_url																										_web_url_mbl		
+	,string_agg(t.container_equipment_no, ' | ') 
+		over(partition by t.serial_no, t.creation_date::date, t.contact_id)											_containers_agg_ship_level
+	,string_agg(t.container_type, ' | ') 
+		over(partition by t.serial_no, t.creation_date::date, t.contact_id)											_containers_type_agg_ship_level	
+	,min(t.vessel) 
+		over(partition by t.serial_no, t.creation_date::date, t.contact_id)											_vessel_agg_ship_level											
 from portal.materialized_view_shipments_tracker t
 left join public.focus__contacts c 
 	on c."ID" = t.contact_id 
