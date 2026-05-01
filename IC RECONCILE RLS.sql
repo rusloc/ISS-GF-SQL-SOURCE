@@ -82,7 +82,8 @@ left join (
 										,'JINESH.RAJAN@ISS-GF.COM'
 										,'RIYAZ.AHMED@ISS-GF.COM'	
 										,'MOHAMMAD.ABBAS@ISS-GF.COM'	
-										,'MERIYA.SAJU@ISS-GF.COM'						
+										,'MERIYA.SAJU@ISS-GF.COM'
+										,'NIKHIL.VISWANATHAN@ISS-GF.COM'						
 								]
 					) a	
 			) g 	

@@ -1,7 +1,6 @@
 
 
 
-
 -- MAIN (Tracker customer version: EMBEDDING PROD)
 set dev.tracker_prod_main = 
 $sql$ 
@@ -33,6 +32,11 @@ $sql$
 			split_part(t.service, '_', 1)) = 'AIR' then coalesce(t.package_count, t.container_packages)
 		else coalesce(t.container_packages, t.package_count)
 	end																													_packages
+	,sum(case 
+		when upper(
+			split_part(t.service, '_', 1)) = 'AIR' then coalesce(t.package_count, t.container_packages)
+		else coalesce(t.container_packages, t.package_count)
+	end) over(partition by t.serial_no)																					_packages_shipment
 	,case 
 		when upper(
 			split_part(t.service, '_', 1)) = 'AIR' then t.gross_weight
@@ -65,7 +69,8 @@ $sql$
 	,case when t.loading_date is null then 'Initialized'
 		else null
 	end 																												_initialized
-	,tl._public_tracking_link																							_public_tracking_link
+	,tl._public_tracking_link																						_public_tracking_link
+	,min(tl._public_tracking_link) over(partition by 	t.serial_no)														_public_tracking_link_shipment
 	,1::int																												_all		
 	,hbl._web_url																										_web_url_hbl
 	,mbl._web_url																										_web_url_mbl		
