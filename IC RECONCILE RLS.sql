@@ -83,7 +83,8 @@ left join (
 										,'RIYAZ.AHMED@ISS-GF.COM'	
 										,'MOHAMMAD.ABBAS@ISS-GF.COM'	
 										,'MERIYA.SAJU@ISS-GF.COM'
-										,'NIKHIL.VISWANATHAN@ISS-GF.COM'						
+										,'NIKHIL.VISWANATHAN@ISS-GF.COM'		
+										,'AZHARUDEEN.FAROOK@ISS-GF.COM'				
 								]
 					) a	
 			) g 	
@@ -473,6 +474,10 @@ inner join (
 									,('KORNCHAYAWEE.SAKUNLOR@ISS-GF.COM','INO1')
 									,('JOSHUA.ARPUTHASAMY@ISS-GF.COM','MYO1')
 									,('GIRISH.CG@ISS-GF.COM','INO1')
+									,('SYLVAIN.BREHIN@ISS-GF.COM','GHO1')
+									,('SYLVAIN.BREHIN@ISS-GF.COM','GHO2')
+									,('SYLVAIN.BREHIN@ISS-GF.COM','NGO1')
+									,('SYLVAIN.BREHIN@ISS-GF.COM','NGO2')
 				) a
 			) l
 	on b._side_a = l._office

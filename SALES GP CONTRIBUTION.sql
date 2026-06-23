@@ -95,7 +95,7 @@ from (
 				left join _users u 
 					on u._sales_user = s._sales_user
 				left join _users au
-					on au._sales_user = s._acc_manager
+					on au._sales_user = upper(replace(replace(trim(coalesce(acm._new_manager,s._acc_manager)) ,'  ',''), ' ','_'))
 				where 1=1
 					and a."ACCOUNTINGDATE" >= '2023-01-01'
 				--	and "Sales User Name" ~* 'casab'

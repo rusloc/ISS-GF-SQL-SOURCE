@@ -17,7 +17,7 @@ $sql$
 select 
 	t.serial_no 
 	,c.creation_date
-	,t.id												_shipment_id
+	,t.id													_shipment_id
 	,c._client_id
 	,t.service 
 	,c._container
@@ -28,6 +28,8 @@ select
 	,c._wakeo_gross_volume
 	,c._wakeo_gross_weight
 	,c._container_type_code
+	,t.gate_out_date
+	,t.empty_container_returned_date
 --	,tl._public_tracking_link
 from portal.materialized_view_shipments_tracker t
 -- unpack and join back EQUIPMENT details info

@@ -107,7 +107,11 @@ union all
 -- join INVOICE links
 left join (
 									select
-										i."Serial No"																							_invoice
+										case
+											when i.iss_domain = 'ISS-IT' 
+												then split_part(i."Serial No",'-',1) || '-' ||
+													lpad(split_part(i."Serial No",'-',2),6,'0')
+											else i."Serial No" end 																				_invoice
 										,i.iss_domain																							_iss_domain
 										,case 
 											when fa."ID" is not null then 'https://' || fa.iss_domain || '.logistaas.com/attachments/' || fa."ID"
@@ -126,14 +130,18 @@ left join (
 										on fa."Parent ID" = i."ID"
 									where 1=1
 										and i."Serial No" is not null
-									--	and i."Serial No" = 'INVDXBSE25004931'
+--										and i."Serial No" = 'INVIT26-137'
 								) l
 	on l._invoice = i._invoice
 	and l._iss_domain = i._iss_domain
 -- join CR NOTES links
 left join (
 									select
-										i."Serial No"																								_invoice
+										case
+											when i.iss_domain = 'ISS-IT' 
+												then split_part(i."Serial No",'-',1) || '-' ||
+													lpad(split_part(i."Serial No",'-',2),6,'0')
+											else i."Serial No" end																								_invoice
 										,i."ID" 
 										,i.iss_domain																							
 										,i."Total" 

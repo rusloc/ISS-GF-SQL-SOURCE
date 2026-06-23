@@ -26,7 +26,7 @@
 
 -- set var: edit inline SQL source and run
 set dev.po_view = 
-$sql$ 
+$sql$
 
 
 
@@ -234,26 +234,34 @@ from (
 					,(feic._ship_response ->> 'arrival_date'::text)::date																_arrival_date
 					,(select min(item ->> 'date')
 						from jsonb_array_elements(feic._ship_response::jsonb -> 'status_updates') item
-						where item ->> 'status' ilike '%Actual Time of Arrival%'
-								or item ->> 'status' ilike '%Vessel arrival%')::date													_arrival_date_actual
+						where 1=1
+							and (item ->> 'status' ilike '%Actual Time of Arrival%'
+								or item ->> 'status' ilike '%Vessel arrival%')
+							and item ->> 'comments' ~* 'Transshipment Port: No')::date												_arrival_date_actual
 					,coalesce(
 						(select min(item ->> 'date')
 							from jsonb_array_elements(feic._ship_response::jsonb -> 'status_updates') item
-							where item ->> 'status' ilike '%Actual Time of Arrival%'
-									or item ->> 'status' ilike '%Vessel arrival%')::date
+						where 1=1
+							and (item ->> 'status' ilike '%Actual Time of Arrival%'
+								or item ->> 'status' ilike '%Vessel arrival%')
+							and item ->> 'comments' ~* 'Transshipment Port: No')::date
 						,(feic._ship_response ->> 'arrival_date'::text)::date)														_arrival_date_full
 				    	,(feic._ship_response ->> 'delivery_date'::text)::date															_del
 					,(feic._ship_response ->> 'loading_date'::text)::date																_departure_date
 			-- >>>
 					,(select min(item ->> 'date')
 						from jsonb_array_elements(feic._ship_response::jsonb -> 'status_updates') item
-						where item ->> 'status' ilike '%Actual Time of Departure%'
-								or item ->> 'status' ilike '%Vessel departure%')::date												_departure_date_actual
+						where 1=1
+							and (item ->> 'status' ilike '%Actual Time of Departure%'
+								or item ->> 'status' ilike '%Vessel departure%')
+							and item ->> 'comments' ~* 'Transshipment Port: No')::date												_departure_date_actual
 					,coalesce(
 						(select min(item ->> 'date')
 							from jsonb_array_elements(feic._ship_response::jsonb -> 'status_updates') item
-							where item ->> 'status' ilike '%Actual Time of Departure%'
-									or item ->> 'status' ilike '%Vessel departure%')::date
+						where 1=1
+							and (item ->> 'status' ilike '%Actual Time of Departure%'
+								or item ->> 'status' ilike '%Vessel departure%')
+							and item ->> 'comments' ~* 'Transshipment Port: No')::date
 						,(feic._ship_response ->> 'loading_date'::text)::date	)														_departure_date_full
 					,(select el ->> 'value'
 				      from jsonb_array_elements(
@@ -385,14 +393,20 @@ from (
 				    			then null 
 				    		else coalesce(
 				    				(feic._ship_response ->> 'eta_wakeo_date'::text)::date 
-				    				- (feic._ship_response ->> 'eta_date'::text)::date, 0)
+				    				- coalesce(
+				    						(feic._ship_response ->> 'pta_date'::text)
+				    						,(feic._ship_response ->> 'eta_date'::text)
+				    						)::date, 0)
 				    end																												_days_delayed_eta
 				    ,case
 				    		when (feic._ship_response ->> 'delivery_date'::text)::date is null
 				    			then null 
 				    		else coalesce(
 				    				(feic._ship_response ->> 'etd_wakeo_date'::text)::date 
-				    				- (feic._ship_response ->> 'etd_date'::text)::date,0)
+				    				- coalesce(
+				    						(feic._ship_response ->> 'ptd_date'::text)
+				    						,(feic._ship_response ->> 'etd_date'::text)
+				    						)::date,0)
 				    end																												_days_delayed_etd
 				    ,coalesce(
 						(feic._ship_response ->> 'eta_wakeo_date'::text)::date
@@ -676,15 +690,19 @@ from (
 						and coalesce(
 									(select min(item ->> 'date')
 										from jsonb_array_elements(feic._ship_response::jsonb -> 'status_updates') item
-										where item ->> 'status' ilike '%Actual Time of Arrival%'
-												or item ->> 'status' ilike '%Vessel arrival%')::date
+										where 1=1
+											and (item ->> 'status' ilike '%Actual Time of Arrival%'
+												or item ->> 'status' ilike '%Vessel arrival%')
+											and  item ->> 'comments' ~* 'Transshipment Port: No')::date
 									,(feic._ship_response ->> 'arrival_date'::text)::date) is not null
 							then (feic._ship_response ->> 'delivery_date'::text)::date 
 								- coalesce(
 									(select min(item ->> 'date')
 										from jsonb_array_elements(feic._ship_response::jsonb -> 'status_updates') item
-										where item ->> 'status' ilike '%Actual Time of Arrival%'
-												or item ->> 'status' ilike '%Vessel arrival%')::date
+										where 1=1
+											and (item ->> 'status' ilike '%Actual Time of Arrival%'
+												or item ->> 'status' ilike '%Vessel arrival%')
+											and  item ->> 'comments' ~* 'Transshipment Port: No')::date
 									,(feic._ship_response ->> 'arrival_date'::text)::date)
 						else 0 end																									_days_custom_clearance_lt
 					,case 
@@ -711,34 +729,42 @@ from (
 						else 0 end																									_days_iss_cont_booking_lt
 					,case 
 						when 
-							coalesce(coalesce(
-						(select min(item ->> 'date')
-							from jsonb_array_elements(feic._ship_response::jsonb -> 'status_updates') item
-							where item ->> 'status' ilike '%Actual Time of Arrival%'
-									or item ->> 'status' ilike '%Vessel arrival%')::date
-						,(feic._ship_response ->> 'arrival_date'::text)::date)
-							,(feic._ship_response ->> 'eta_wakeo_date'::text)::date
-							,(feic._ship_response ->> 'pta_date'::text)::date
-							,(feic._ship_response ->> 'eta_date'::text)::date) is not null
-								then 
- 									coalesce(coalesce(
-						(select min(item ->> 'date')
-							from jsonb_array_elements(feic._ship_response::jsonb -> 'status_updates') item
-							where item ->> 'status' ilike '%Actual Time of Arrival%'
-									or item ->> 'status' ilike '%Vessel arrival%')::date
-						,(feic._ship_response ->> 'arrival_date'::text)::date)
+							coalesce(
+								coalesce(
+									(select min(item ->> 'date')
+										from jsonb_array_elements(feic._ship_response::jsonb -> 'status_updates') item
+										where 1=1
+											and (item ->> 'status' ilike '%Actual Time of Arrival%'
+												or item ->> 'status' ilike '%Vessel arrival%')
+											and  item ->> 'comments' ~* 'Transshipment Port: No')::date
+									,(feic._ship_response ->> 'arrival_date'::text)::date)
 										,(feic._ship_response ->> 'eta_wakeo_date'::text)::date
 										,(feic._ship_response ->> 'eta_date'::text)::date
-										,(feic._ship_response ->> 'pta_date'::text)::date)
-									- coalesce(coalesce(
-												(select min(item ->> 'date')
-													from jsonb_array_elements(feic._ship_response::jsonb -> 'status_updates') item
-													where item ->> 'status' ilike '%Actual Time of Departure%'
-															or item ->> 'status' ilike '%Vessel departure%')::date
-												,(feic._ship_response ->> 'loading_date'::text)::date	)
-										,(feic._ship_response ->> 'etd_wakeo_date'::text)::date
-										,(feic._ship_response ->> 'etd_date'::text)::date
-										,(feic._ship_response ->> 'ptd_date'::text)::date)
+										,(feic._ship_response ->> 'pta_date'::text)::date) is not null
+							then 
+								coalesce(
+									coalesce(
+										(select min(item ->> 'date')
+										from jsonb_array_elements(feic._ship_response::jsonb -> 'status_updates') item
+										where 1=1
+											and (item ->> 'status' ilike '%Actual Time of Arrival%'
+												or item ->> 'status' ilike '%Vessel arrival%')
+											and  item ->> 'comments' ~* 'Transshipment Port: No')::date
+										,(feic._ship_response ->> 'arrival_date'::text)::date)
+														,(feic._ship_response ->> 'eta_wakeo_date'::text)::date
+														,(feic._ship_response ->> 'eta_date'::text)::date
+														,(feic._ship_response ->> 'pta_date'::text)::date)
+													- coalesce(coalesce(
+																(select min(item ->> 'date')
+																	from jsonb_array_elements(feic._ship_response::jsonb -> 'status_updates') item
+																	where 1=1
+																		and (item ->> 'status' ilike '%Actual Time of Departure%'
+																			or item ->> 'status' ilike '%Vessel departure%')
+																		and item ->> 'comments' ~* 'Transshipment Port: No')::date
+																,(feic._ship_response ->> 'loading_date'::text)::date	)
+														,(feic._ship_response ->> 'etd_wakeo_date'::text)::date
+														,(feic._ship_response ->> 'etd_date'::text)::date
+														,(feic._ship_response ->> 'ptd_date'::text)::date)
 						else null
 					end																												_days_transit_lt
 					,case
@@ -761,6 +787,8 @@ from (
   					,case 
   						when (feic._ship_response ->> 'delivery_date'::text)::date is null
   							or (feic._ship_response ->> 'origin_country') is null
+  							or (feic._ship_response ->> 'origin_port') is null 
+  							or (feic._ship_response ->> 'origin_port') = ''
   							or regexp_match(feic._ship_response ->> 'operational_status', 'cancel','i') is not null
   								then 0
   						else coalesce(slt.avg_lead_time,0) + coalesce(ctt.average_transit_time,0) + 7 + 3 + 5
@@ -865,131 +893,110 @@ from (
 									and cv."Declaration Currency" is not null
 							) cv
 					on cv._ship_id = fs."ID"
-			-- costs + focus oper_status
+			/*
+			 * Costs in LOCAL columns show AED (respecing domain); USD column show USD (converted from LOCAL currency)
+			 */
 				left join (
-										select 
-											s."ID" 																										_ship_id
-											,s."Serial No" 																								_ship_serial
-											,s."Operational Status"																						_ship_focus_status
-									-- ORIGIN CHARGE
-											,sum(case 
-												when c."Currency" = 'USD' and oc.category = 'Origin Charge'
-													then c."Selling Rate" * c."Selling Quantity" 
-												when c."Currency" <> 'USD' and oc.category = 'Origin Charge'
-													then c."Selling Rate" * c."Selling Quantity" * "Selling Local Exchange Rate" * er."Exchange Rate"
-											end)																											_org_charges_usd	
-											,sum(case 
-												when c."Currency" = 'USD' and oc.category = 'Origin Charge'
-													then c."Selling Rate" * c."Selling Quantity" * "Selling Local Exchange Rate"
-												else null end)																							_org_charges_local
-									-- DEST CHARGES	
-											,sum(case 
-												when c."Currency" = 'USD' and oc.category = 'Destination Charge'
-													then c."Selling Rate" * c."Selling Quantity" 
-												when c."Currency" <> 'USD' and oc.category = 'Destination Charge'
-													then c."Selling Rate" * c."Selling Quantity" * "Selling Local Exchange Rate" * er."Exchange Rate"
-											end)																											_dest_charges_usd	
-											,sum(case 
-												when c."Currency" = 'USD' and oc.category = 'Destination Charge'
-													then c."Selling Rate" * c."Selling Quantity" * "Selling Local Exchange Rate"
-												else null end)																							_dest_charges_local
-									-- FREIGHT CHARGES	
-											,sum(case 
-												when c."Currency" = 'USD' and oc.category = 'Freight Charge'
-													then c."Selling Rate" * c."Selling Quantity" 
-												when c."Currency" <> 'USD' and oc.category = 'Freight Charge'
-													then c."Selling Rate" * c."Selling Quantity" * "Selling Local Exchange Rate" * er."Exchange Rate"
-											end)																											_frt_charges_usd	
-											,sum(case 
-												when c."Currency" = 'USD' and oc.category = 'Freight Charge'
-													then c."Selling Rate" * c."Selling Quantity" * "Selling Local Exchange Rate"
-												else null end)																							_frt_charges_local
-									-- AUX CHARGES	
-											,sum(case 
-												when c."Currency" = 'USD' and oc.category = 'Ancillary Charge'
-													then c."Selling Rate" * c."Selling Quantity" 
-												when c."Currency" <> 'USD' and oc.category = 'Ancillary Charge'
-													then c."Selling Rate" * c."Selling Quantity" * "Selling Local Exchange Rate" * er."Exchange Rate"
-											end)																											_aux_charges_usd	
-											,sum(case 
-												when c."Currency" = 'USD' and oc.category = 'Ancillary Charge'
-													then c."Selling Rate" * c."Selling Quantity" * "Selling Local Exchange Rate"
-												else null end )																							_aux_charges_local
-									-- other info
-											,string_agg(
-													case 
-														when oc.category = 'Ancillary Charge' 
-															then c."Extra Info"
-														else null
-													end, ' | ') 																							_aux_charge_type	
-										-- xl table mapping name: Invoice #
-											,string_agg(
-													case
-														when oc.category <> 'Ancillary Charge' then inv."Serial No"
-														else null
-													end, ' | ')																							_issued_invoices
-										-- xl table mapping name: Billing month
-											,string_agg(
-													case 
-														when oc.category <> 'Ancillary Charge'
-															then to_char(inv."Issue Date"::date, 'MON-yyyy')
-														else null
-													end, ' | ')																							_issue_date
-											,string_agg(
-													case
-														when oc.category = 'Ancillary Charge' then inv."Serial No"
-														else null
-													end, ' | ')																							_addl_issued_invoices
-											,string_agg(
-													case 
-														when oc.category = 'Ancillary Charge'
-															then to_char(inv."Issue Date"::date, 'MON-yyyy')
-														else null
-													end, ' | ')																							_addl_issue_date
-										from public.focus__shipments s
-										left join public.focus__costs_revenues_items c 
-											on c."Shipment ID" = s."ID" 
-											and c.iss_domain = s.iss_domain 
-										left join public.analytical__currencies ac
-											on ac.iss_domain = s.iss_domain
-									-- join exchange rates (further logic update and data fix is required)
-										left join public.analytical__exchange_rates er 
-											on er."cur2" = ac."currency"
-											and er."Date" = '2025-03-13'
-									-- attr for CHarge types
-										left join portal.charge_service_mapping oc
-											on upper(trim(oc.service)) = upper(trim(s."Service")) 
-											and upper(trim(oc.charge)) = upper(trim(c."Charge Name"))
-											and oc.status = 'Active'
-										left join public.focus__issued_invoices inv 
-											on inv."ID" = (replace(split_part(c."Customer Invoice ID",',',1), '.0',''))::int 
-											and inv.iss_domain = c.iss_domain
-											and inv."Voided"::int = 0
-										where 1=1
-									-- added condition check to speed up query
---											and exists (select 1 from portal.freight_unit f where 1=1 and f.shipment_serial_no = s."Serial No")
-											and exists (
-														select 1
-														from (
-																select 
-																	case 
-																		when fe.iss_domain = coalesce(poc.iss_domain,'NA')
-																			then fe.shipment_response ->> 'serial_no'
-																		when fe.remote_iss_domain = coalesce(poc.iss_domain,'NA')
-																			then fe.remote_shipment_response ->> 'serial_no'
-																		else null
-																	end															_serial_no
-																from portal.freight_unit fu 
-																left join portal.freight_unit_enrich fe
-																	on fe.unit_no = fu.unit_no
-																left join portal.purchase_order_company poc
-																	on poc.id = fu.purchase_order_company_id
-																) f
-															where 1=1 
-																and f._serial_no = s."Serial No"
-															)
-										group by 
-											1,2,3
+								select 
+									t.*
+									,_org_charges_local * u.to_usd_rate																						_org_charges_usd
+									,_dest_charges_local * u.to_usd_rate																						_dest_charges_usd
+									,_frt_charges_local * u.to_usd_rate																						_frt_charges_usd
+									,_aux_charges_local * u.to_usd_rate																						_aux_charges_usd
+									,count(*) over(partition by _ship_serial)
+								from (
+											select 
+												s."ID" 																										_ship_id
+												,s."Serial No" 																								_ship_serial
+												,s."Operational Status"																						_ship_focus_status
+												,c.iss_domain																								_iss_dom
+												,ac.currency																									_currency
+										-- ORIGIN CHARGE
+												,sum(case 
+													when oc.category = 'Origin Charge'
+														then c."Selling Rate" * c."Selling Quantity" 
+															* coalesce(nullif("Selling Local Exchange Rate",1), a.to_aed_rate)
+													else 0 end )																								_org_charges_local	
+										-- DEST CHARGES	
+												,sum(case 
+													when oc.category = 'Destination Charge'
+														then c."Selling Rate" * c."Selling Quantity" 
+															* coalesce(nullif("Selling Local Exchange Rate",1), a.to_aed_rate)
+													else 0 end )																								_dest_charges_local	
+										-- FREIGHT CHARGES	
+												,sum(case 
+													when oc.category = 'Freight Charge'
+														then c."Selling Rate" * c."Selling Quantity" 
+															* coalesce(nullif("Selling Local Exchange Rate",1), a.to_aed_rate)
+													else 0 end )																								_frt_charges_local
+										-- AUX CHARGES	
+												,sum(case 
+													when oc.category = 'Ancillary Charge'
+														then c."Selling Rate" * c."Selling Quantity" 
+															* coalesce(nullif("Selling Local Exchange Rate",1), a.to_aed_rate)
+													else 0 end )																								_aux_charges_local
+										-- other info
+												,string_agg(
+														case 
+															when oc.category = 'Ancillary Charge' 
+																then c."Extra Info"
+															else null
+														end, ' | ') 																							_aux_charge_type	
+											-- xl table mapping name: Invoice #
+												,string_agg(distinct
+														case
+															when oc.category <> 'Ancillary Charge' then inv."Serial No"
+															else null
+														end, ' | ')																							_issued_invoices
+											-- xl table mapping name: Billing month
+												,string_agg(distinct
+														case 
+															when oc.category <> 'Ancillary Charge'
+																then to_char(inv."Issue Date"::date, 'MON-yyyy')
+															else null
+														end, ' | ')																							_issue_date
+												,string_agg(
+														case
+															when oc.category = 'Ancillary Charge' then inv."Serial No"
+															else null
+														end, ' | ')																							_addl_issued_invoices
+												,string_agg(
+														case 
+															when oc.category = 'Ancillary Charge'
+																then to_char(inv."Issue Date"::date, 'MON-yyyy')
+															else null
+														end, ' | ')																							_addl_issue_date
+											from public.focus__shipments s
+											left join public.focus__costs_revenues_items c 
+												on c."Shipment ID" = s."ID" 
+												and c.iss_domain = s.iss_domain 
+											left join public.analytical__currencies ac
+												on ac.iss_domain = s.iss_domain
+										/*
+										 * join two tables: to_aed & to_usd
+										 * local cur column -> convert local to AED
+										 * USD cur column -> convert local to USD
+										 */
+											left join public._fx_rates_aed a
+												on a.currency_code = c."Currency"
+												and a.rate_date = '2026-05-07'
+										-- attr for CHarge types
+											left join portal.charge_service_mapping oc
+												on upper(trim(oc.service)) = upper(trim(s."Service")) 
+												and upper(trim(oc.charge)) = upper(trim(c."Charge Name"))
+												and oc.status = 'Active'
+											left join public.focus__issued_invoices inv 
+												on inv."ID" = (replace(split_part(c."Customer Invoice ID",',',1), '.0',''))::int 
+												and inv.iss_domain = c.iss_domain
+												and inv."Voided"::int = 0
+											where 1=1
+												and s."Serial No" is not null
+											group by 
+												1,2,3,4,5
+												) t
+									left join public._fx_rates_usd u 
+										on u.currency_code = t._currency
+										and u.rate_date = '2026-05-07'
 							) costs 
 			-- conditional join to join on remote_shipment_serail OR main_shipments_serial
 					on costs._ship_serial = feic._ship_response ->> 'serial_no'
@@ -1026,6 +1033,8 @@ from (
 		,_calc as (
 						select 
 							y.*
+							,coalesce(_arrival_date_actual,_arrival_date) 																		_arrival_date_fallback
+							,coalesce(_departure_date_actual,_departure_date) 																	_departure_date_fallback
 					-- replace 3 days with SLA_MASTER_COMS data: Customs Clearance & Delivery (green); match mode & port
 							,case
 								when max(coalesce(_eta_wakeo, _eta_iss))
@@ -1036,6 +1045,9 @@ from (
 										over(partition by _fo_id) + interval '3 days'	
 								end 																												_current_edd_fo
 							,case 
+								when _del is null
+								or _crd_actual is null
+									then null
 								when (coalesce(_days_order_placement_lt, 0)
                                     + coalesce(_days_supplier_production_lt, 0)
                                     + coalesce(_days_custom_clearance_lt, 0)
@@ -1045,102 +1057,99 @@ from (
                                  else (coalesce(_days_order_placement_lt, 0)
                                     + coalesce(_days_supplier_production_lt, 0)
                                     + coalesce(_days_custom_clearance_lt, 0)
-                                    + coalesce(_days_iss_cont_booking_lt, 0))
+                                    + coalesce(_days_iss_cont_booking_lt, 0)
+									+ coalesce(_days_transit_lt, 0))
 								end																												_actual_lead
 							,case 
-								-- null case => null
-									when _supplier_lead_time is null 
-										or _del is null
-										or _full_eta is null
-										or _full_etd is null
-										or _pr_appr_date is null
-										or _days_total_comm_perf is null
-									-- actual lead case
-										or (case 
-												when (_days_order_placement_lt 
-													+ _days_supplier_production_lt
-													+ _days_custom_clearance_lt
-													+ _days_iss_cont_booking_lt
-													+ _days_transit_lt) > 500
-														then 0
-												else (_days_order_placement_lt 
-													+ _days_supplier_production_lt
-													+ _days_custom_clearance_lt
-													+ _days_iss_cont_booking_lt)
-											end) is null	
-										then null
-								-- non null case
-									when ((case 
-												when (_days_order_placement_lt 
-													+ _days_supplier_production_lt
-													+ _days_custom_clearance_lt
-													+ _days_iss_cont_booking_lt
-													+ _days_transit_lt) > 500
-														then 0
-												else (_days_order_placement_lt 
-													+ _days_supplier_production_lt
-													+ _days_custom_clearance_lt
-													+ _days_iss_cont_booking_lt)
-											end) 		
-											- _days_total_comm_perf) <= 15
-										then 'Healthy'
-									when ((case 
-												when (_days_order_placement_lt 
-													+ _days_supplier_production_lt
-													+ _days_custom_clearance_lt
-													+ _days_iss_cont_booking_lt
-													+ _days_transit_lt) > 500
-														then 0
-												else (_days_order_placement_lt 
-													+ _days_supplier_production_lt
-													+ _days_custom_clearance_lt
-													+ _days_iss_cont_booking_lt)
-											end) 		
-											- _days_total_comm_perf) <= 30
-										then 'Minor'
-									when ((case 
-												when (_days_order_placement_lt 
-													+ _days_supplier_production_lt
-													+ _days_custom_clearance_lt
-													+ _days_iss_cont_booking_lt
-													+ _days_transit_lt) > 500
-														then 0
-												else (_days_order_placement_lt 
-													+ _days_supplier_production_lt
-													+ _days_custom_clearance_lt
-													+ _days_iss_cont_booking_lt)
-											end) 		
-											- _days_total_comm_perf) <= 45
-										then 'Moderate'
-									when ((case 
-												when (_days_order_placement_lt 
-													+ _days_supplier_production_lt
-													+ _days_custom_clearance_lt
-													+ _days_iss_cont_booking_lt
-													+ _days_transit_lt) > 500
-														then 0
-												else (_days_order_placement_lt 
-													+ _days_supplier_production_lt
-													+ _days_custom_clearance_lt
-													+ _days_iss_cont_booking_lt)
-											end) 		
-											- _days_total_comm_perf) <= 60
-										then 'Major'
-									when ((case 
-												when (_days_order_placement_lt 
-													+ _days_supplier_production_lt
-													+ _days_custom_clearance_lt
-													+ _days_iss_cont_booking_lt
-													+ _days_transit_lt) > 500
-														then 0
-												else (_days_order_placement_lt 
-													+ _days_supplier_production_lt
-													+ _days_custom_clearance_lt
-													+ _days_iss_cont_booking_lt)
-											end) 		
-											- _days_total_comm_perf) > 60
-										then 'Severe'
-								end																												_health_check
+							-- null case => null
+								when 
+									(_supplier_lead_time is null 
+										or _supplier_lead_time = 0)
+									or _del is null
+									or _crd_actual is null
+									or _full_eta is null
+									or _full_etd is null
+									or _pr_appr_date is null
+									or (_days_total_comm_perf is null
+										or _days_total_comm_perf = 0)
+									then null
+							-- non null case
+								when ((case 
+											when (coalesce(_days_order_placement_lt,     0)
+												+ coalesce(_days_supplier_production_lt, 0)
+												+ coalesce(_days_custom_clearance_lt,    0)
+												+ coalesce(_days_iss_cont_booking_lt,    0)
+												+ coalesce(_days_transit_lt,             0)) > 500
+													then 0
+											else (coalesce(_days_order_placement_lt,     0)
+												+ coalesce(_days_supplier_production_lt, 0)
+												+ coalesce(_days_custom_clearance_lt,    0)
+												+ coalesce(_days_iss_cont_booking_lt,    0)
+												 + coalesce(_days_transit_lt, 0))
+										end) 		
+										- _days_total_comm_perf) <= 15
+									then 'Healthy'
+								when ((case 
+											when (coalesce(_days_order_placement_lt,     0)
+												+ coalesce(_days_supplier_production_lt, 0)
+												+ coalesce(_days_custom_clearance_lt,    0)
+												+ coalesce(_days_iss_cont_booking_lt,    0)
+												+ coalesce(_days_transit_lt,             0)) > 500
+													then 0
+											else (coalesce(_days_order_placement_lt,     0)
+												+ coalesce(_days_supplier_production_lt, 0)
+												+ coalesce(_days_custom_clearance_lt,    0)
+												+ coalesce(_days_iss_cont_booking_lt,    0)
+												 + coalesce(_days_transit_lt, 0))
+										end) 		
+										- _days_total_comm_perf) <= 30
+									then 'Minor'
+								when ((case 
+											when (coalesce(_days_order_placement_lt,     0)
+												+ coalesce(_days_supplier_production_lt, 0)
+												+ coalesce(_days_custom_clearance_lt,    0)
+												+ coalesce(_days_iss_cont_booking_lt,    0)
+												+ coalesce(_days_transit_lt,             0)) > 500
+													then 0
+											else (coalesce(_days_order_placement_lt,     0)
+												+ coalesce(_days_supplier_production_lt, 0)
+												+ coalesce(_days_custom_clearance_lt,    0)
+												+ coalesce(_days_iss_cont_booking_lt,    0)
+												 + coalesce(_days_transit_lt, 0))
+										end) 		
+										- _days_total_comm_perf) <= 45
+									then 'Moderate'
+								when ((case 
+											when (coalesce(_days_order_placement_lt,     0)
+												+ coalesce(_days_supplier_production_lt, 0)
+												+ coalesce(_days_custom_clearance_lt,    0)
+												+ coalesce(_days_iss_cont_booking_lt,    0)
+												+ coalesce(_days_transit_lt,             0)) > 500
+													then 0
+											else (coalesce(_days_order_placement_lt,     0)
+												+ coalesce(_days_supplier_production_lt, 0)
+												+ coalesce(_days_custom_clearance_lt,    0)
+												+ coalesce(_days_iss_cont_booking_lt,    0)
+												 + coalesce(_days_transit_lt, 0))
+										end) 		
+										- _days_total_comm_perf) <= 60
+									then 'Major'
+								when ((case 
+											when (coalesce(_days_order_placement_lt,     0)
+												+ coalesce(_days_supplier_production_lt, 0)
+												+ coalesce(_days_custom_clearance_lt,    0)
+												+ coalesce(_days_iss_cont_booking_lt,    0)
+												+ coalesce(_days_transit_lt,             0)) > 500
+													then 0
+											else (coalesce(_days_order_placement_lt,     0)
+												+ coalesce(_days_supplier_production_lt, 0)
+												+ coalesce(_days_custom_clearance_lt,    0)
+												+ coalesce(_days_iss_cont_booking_lt,    0)
+												 + coalesce(_days_transit_lt, 0))
+										end) 		
+										- _days_total_comm_perf) > 60
+									then 'Severe'
+							end																												_health_check
 								,case  
 										when _full_etd is null 
 												then 'Pending'
@@ -1172,7 +1181,7 @@ from (
 										else null
 									end																											_status
 							,case 
-									when _e2e_total_lt > 0
+									when _e2e_total_lt > 0 and _days_total_comm_perf > 0
 										then 1 - abs((_e2e_total_lt - _days_total_comm_perf)::numeric
 							  			-- divide by {_days_total_comm_perf}
 							  					/ coalesce(nullif(_days_total_comm_perf,0),1))
@@ -1195,6 +1204,7 @@ from (
 							      	then 1
 							    when (_crd - _po_app_date) > _supplier_lead_time
 							      	then 1 - abs((_crd - _po_app_date)::numeric / coalesce(nullif(_supplier_lead_time,0),1))
+							    else 777
 							end																													_supplier_committed_prod_rdy_perf
 							,case 
 								when _del is null or coalesce(_arrival_date_full,_full_eta) is null 
@@ -1276,7 +1286,8 @@ from (
 				Exceptions block
 			*/
 			,case 
-				when _etd is not null and _eta is not null and _crd is not null then 'dark green'
+				when _etd is not null and _eta is not null and _crd is not null 
+					then 'dark green'
 				else 'green' end																													_01_po_aknowledgment_expt
 		-- BOOKING PERF exception uses dynamic values fetched from 'SLA_MASTER_COMS' table (see joined table in pre_calc CTE)
 			,case 
@@ -1658,6 +1669,8 @@ from (
 								,null::text 																						_dn
 								,null::jsonb																						_sla_map
 								,null::date 																						_current_edd_fo
+								,null::date																						_arrival_date_fallback
+								,null::date 																						_departure_date_fallback
 								,null::numeric 																					_actual_lead
 								,null::text 																						_health_check
 								,null::text 																						_status
@@ -1705,7 +1718,7 @@ from (
 where 1=1
 --	and _po_no_ekporef = 'DXBSI26006050'
 --	and _fo_serial= 'EKTR0023'
---	and _shipment_serial_iss_job = 'DXBSI26006050'
+--	and _shipment_serial_iss_job = 'DXBSI26004019'
 	
 	
 
@@ -1718,7 +1731,7 @@ $sql$;
 -- update source code
 update sql_source 
 set _code = current_setting('dev.po_view') 
-	,_updated = now() 
+	,_updated = 	now() 
 where 1=1	
 	and _page = 'PO VIEW' 
 	and _report = 'COMS';

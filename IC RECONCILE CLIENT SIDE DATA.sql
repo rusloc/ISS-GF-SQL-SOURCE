@@ -108,7 +108,11 @@ union all
 left join (
 									select
 				--						i."ID"
-										i."Serial No"																							_invoice
+										case
+											when i.iss_domain = 'ISS-IT' 
+												then split_part(i."Serial No",'-',1) || '-' ||
+													lpad(split_part(i."Serial No",'-',2),6,'0')
+											else i."Serial No" end 																				_invoice
 										,i.iss_domain																							_iss_domain
 										,case 
 											when fa."ID" is not null then 'https://' || fa.iss_domain || '.logistaas.com/attachments/' || fa."ID"
@@ -134,7 +138,11 @@ left join (
 -- join CR NOTES links
 left join (
 									select
-										i."Serial No"																							_invoice
+										case
+											when i.iss_domain = 'ISS-IT' 
+												then split_part(i."Serial No",'-',1) || '-' ||
+													lpad(split_part(i."Serial No",'-',2),6,'0')
+											else i."Serial No" end																							_invoice
 										,i."ID" 
 										,i.iss_domain																							
 										,i."Total" 
@@ -142,7 +150,7 @@ left join (
 											when fa."ID" is not null then 'https://' || fa.iss_domain || '.logistaas.com/attachments/' || fa."ID"
 											else null
 										end 																									_url
-										,'http://iss-track-trace.uaenorth.azurecontainer.io:50052/invoice/' || 'icn' || i."ID"							_url_vault
+										,'http://iss-track-trace.uaenorth.azurecontainer.io:50052/invoice/' || 'icn' || i."ID"									_url_vault
 									from public.focus__issued_credit_notes i
 									left join (
 													select 
@@ -155,6 +163,7 @@ left join (
 										fa."Parent ID" = i."ID"
 									where 1=1
 										and i."Serial No" is not null
+--										and i.iss_domain = 'ISS-IT'
 								) il 
 	on il._invoice = i._invoice
 	and il.iss_domain = i._iss_domain

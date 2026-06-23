@@ -49,17 +49,48 @@ select
 	,coalesce(upper(c."Name"), 'NA') 	
 		|| '_' || coalesce(serial_no, 'NA') 
 		|| '_' || coalesce(container_equipment_no,'NA')																	_client_dim_link
-	,t.co2_emission_details ->> 'co2e_gptkm'																			_co2e_gptkm
+	,n._client_branch_name																								_client_branch_name
+	,t.co2_emission_details ->> 'co2e_gptkm'																				_co2e_gptkm
 	,t.co2_emission_details ->> 'co2e'																					_co2e
 	,coalesce(sd._change_date, 'Initialized')																			_change_date
 	,s._LOB
 	,coalesce(s._analytical_carrier, a."Carrier Name",'NA')																_analytical_carrier 
 	,s._analytical_coloader																								_analytical_coloader												
 	,b._booking_no																										_booking_no
-	,s._offer_serial																									_offer_serial
+	,s._offer_serial																										_offer_serial
 	,s._fin_status																										_fin_status
 	,tl._public_tracking_link																							_public_tracking_link
---	,count(*) over()
+	,_fields																											_wakeo_error_fields
+	,_reasons																										_wakeo_error_reasons	
+	,s._crm_client_branch																							_crm_client_branch
+	,case
+		when wakeo_id is not null then 'Wakeo traked'
+		else 'Not tracked'
+	end 																												_is_wakeo_tracker
+	,case 
+		when t.loading_date > now()::date or t.arrival_date > now()::date then 'ATA/ATD ahead'
+		else 'ATA/ATD ok'
+	end 																												_ata_atd_ahead
+	,case 
+		when (master_no is not null or master_no <> '') 
+		and (t.eta_date is null or t.etd_date is null )
+			then 'ETD/ETA empty after MBL'
+		else 'ETD/ETA after MBL OK'
+	end 																												_eta_etd_after_mbl
+	,case 
+		when (master_no is not null or master_no <> '') and t.eta_date is null
+			then '1'
+		else '0'
+	end 																												_eta_after_mbl_error
+	,case 
+		when (master_no is not null or master_no <> '') and t.etd_date is null
+			then '1'
+		else '0'
+	end 																												_etd_after_mbl_error
+	,s._sales_user																									_sales_user
+	,s._oper_user																									_oper_user
+	,s._doc_user																										_doc_user
+	,upper(coalesce(ps.name, pa.name))																				_port_of_discharge
 from portal.materialized_view_shipments_tracker t
 left join public.focus__contacts c 
 	on c."ID" = t.contact_id 
@@ -68,19 +99,69 @@ left join (
 			select 
 				upper(trim(s."Serial No"))				_serial 
 				,s."URL to Shipment" 						_web_url
+				,s."CRM Client Branch"					_crm_client_branch
+				,s."Contact Branch ID"					_contact_branch_id
 				,s."Containers"							_containers
 				,s."Line Of Business"						_LOB
 				,s."Carrier / Shipping Line"				_analytical_carrier 
 				,s."Co-Loader"							_analytical_coloader
 				,"Offer Serial No"						_offer_serial
 				,"Financial Status"						_fin_status
+				,s."Sales User"							_sales_user
+				,s."Operations User"						_oper_user
+				,s."Documentation User"					_doc_user
 			from public.analytical__shipments_pbi s
 			) s 
 	on s._serial = upper(trim(t.serial_no ))
+left join (
+			select
+				--  m."ID"																_master_id
+				  fs._serial_no														_serial_no
+				  ,m.iss_domain														_iss_dom
+				  ,string_agg(e->>'field' , ' | ')									_fields
+				  ,string_agg(e->>'reason' , ' | ')									_reasons
+				from focus__master_shipments m
+				cross join lateral jsonb_array_elements(
+				  case jsonb_typeof(m."Wakeo Missing Data")
+				    when 'array'  then m."Wakeo Missing Data"
+				    when 'object' then jsonb_build_array(m."Wakeo Missing Data")
+				    else '[]'::jsonb
+				  end
+				) e
+				left join  (
+					    select distinct on ("ID", iss_domain)
+					    		s."Master ID"											_master_id
+					    		,s."Serial No"											_serial_no
+				    		from public.focus__shipments s
+				    		where 1=1
+				    			and s."Serial No" is not null
+				    		order by "ID", iss_domain
+				    		) fs
+				    	on fs._master_id = m."ID"	
+				where 1=1
+					and e->>'field' is not null
+					and fs._serial_no is not null
+				group by 1,2
+		) w 
+	on w._serial_no = upper(trim(t.serial_no ))
+left join (
+				select 
+					distinct on (b."ID")
+					b."ID"										_contact_branch_id
+					,b."Name" || ' (' || b."Address" || ')'		_client_branch_name 
+				from public.focus__contact_branches b
+				order by "ID"
+		) n
+	on n._contact_branch_id = s._contact_branch_id
 left join public.analytical__air_sea_ports_codes o
 	on upper(trim(origin_port)) = o.code  
 left join public.analytical__air_sea_ports_codes d
 	on upper(trim(destination_port)) = d.code  
+-- DISCHARGE
+left join public.analytical__sea_ports_regions ps
+	on ps.port_code = t.port_of_discharge_name
+left join public.analytical__air_sea_ports_codes pa
+	on pa.code = t.port_of_discharge_name
 left join (
 			select 
 				iso_2_char_code											_code
@@ -181,6 +262,13 @@ where 1=1
 	
 	
 	
+
+	
+	
+	
+
+	
+
 	
 	
 	

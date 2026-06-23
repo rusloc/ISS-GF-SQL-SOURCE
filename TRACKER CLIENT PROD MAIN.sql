@@ -54,12 +54,16 @@ $sql$
 	,coalesce(upper(c."Name"), 'NA') 	
 		|| '_' || coalesce(serial_no, 'NA') 
 		|| '_' || coalesce(container_equipment_no,'NA')																	_client_dim_link
+	,s._crm_client_branch																							_crm_client_branch
 	,t.co2_emission_details ->> 'co2e_gptkm'																			_co2e_gptkm
 	,t.co2_emission_details ->> 'co2e'																					_co2e
 	,coalesce(sd._change_date, 'Initialized')																			_change_date
 	,coalesce(calculated_eta, eta_date)::date																					_eta_auto_date
 	,coalesce(etd_wakeo_date, etd_date)::date																					_etd_auto_date
-	,coalesce(t.calculated_arrival::date, t.arrival_date::date)																		_arrival_date_auto 	
+	,max(coalesce(t.calculated_arrival::date, t.arrival_date::date))	 
+		over(partition by t.serial_no, t.creation_date::date, t.contact_id)												_arrival_date_auto
+	,t.empty_container_returned_date																						_empty_cont_returned
+	,t.gate_out_date::date																								_gate_out
 	,s._LOB																												_LOB
 	,coalesce(s._analytical_carrier, a."Carrier Name",'NA')															_analytical_carrier 
 	,s._analytical_coloader																								_analytical_coloader												
@@ -78,8 +82,11 @@ $sql$
 		over(partition by t.serial_no, t.creation_date::date, t.contact_id)											_containers_agg_ship_level
 	,string_agg(t.container_type, ' | ') 
 		over(partition by t.serial_no, t.creation_date::date, t.contact_id)											_containers_type_agg_ship_level	
-	,min(t.vessel) 
-		over(partition by t.serial_no, t.creation_date::date, t.contact_id)											_vessel_agg_ship_level											
+	,coalesce(string_agg(t.vessel, ' | ') 
+		over(partition by t.serial_no, t.creation_date::date, t.contact_id),'NA')										_vessel_agg_ship_level	
+	,_fields																											_wakeo_error_fields
+	,_reasons																										_wakeo_error_reasons	
+	,coalesce(ps.name, pa.name )																						_port_of_discharge
 from portal.materialized_view_shipments_tracker t
 left join public.focus__contacts c 
 	on c."ID" = t.contact_id 
@@ -87,9 +94,10 @@ left join (
 	-- join shipment WEB URL
 			select 
 				upper(trim(s."Serial No"))				_serial 
-				,s."URL to Shipment" 						_web_url
+				,s."CRM Client Branch"					_crm_client_branch
+				,s."URL to Shipment" 					_web_url
 				,s."Containers"							_containers
-				,s."Line Of Business"						_LOB
+				,s."Line Of Business"					_LOB
 				,s."Carrier / Shipping Line"				_analytical_carrier 
 				,s."Co-Loader"							_analytical_coloader
 				,"Offer Serial No"						_offer_serial
@@ -97,10 +105,47 @@ left join (
 			from public.analytical__shipments_pbi s
 			) s 
 	on s._serial = upper(trim(t.serial_no ))
+left join (
+			select
+				--  m."ID"																_master_id
+				  fs._serial_no														_serial_no
+				  ,m.iss_domain														_iss_dom
+				  ,string_agg(e->>'field' , ' | ')									_fields
+				  ,string_agg(e->>'reason' , ' | ')									_reasons
+				from focus__master_shipments m
+				cross join lateral jsonb_array_elements(
+				  case jsonb_typeof(m."Wakeo Missing Data")
+				    when 'array'  then m."Wakeo Missing Data"
+				    when 'object' then jsonb_build_array(m."Wakeo Missing Data")
+				    else '[]'::jsonb
+				  end
+				) e
+				left join  (
+					    select distinct on ("ID", iss_domain)
+					    		s."Master ID"											_master_id
+					    		,s."Serial No"											_serial_no
+				    		from public.focus__shipments s
+				    		where 1=1
+				    			and s."Serial No" is not null
+				    		order by "ID", iss_domain
+				    		) fs
+				    	on fs._master_id = m."ID"	
+				where 1=1
+					and e->>'field' is not null
+					and fs._serial_no is not null
+				group by 1,2
+		) w 
+	on w._serial_no = upper(trim(t.serial_no ))
+-- origin & destination AIR
 left join public.analytical__air_sea_ports_codes o
 	on upper(trim(origin_port)) = o.code  
 left join public.analytical__air_sea_ports_codes d
-	on upper(trim(destination_port)) = d.code  
+	on upper(trim(destination_port)) = d.code 
+-- ports of DISCHARGE
+left join public.analytical__sea_ports_regions ps
+	on ps.port_code = t.port_of_discharge_name
+left join public.analytical__air_sea_ports_codes pa
+	on pa.code = t.port_of_discharge_name
 left join (
 			select 
 				iso_2_char_code											_code
